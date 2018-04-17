@@ -347,8 +347,6 @@ bool GMainWindow::LoadROM(const QString& filename) {
 
     const Core::System::ResultStatus result{system.Load(render_window, filename.toStdString())};
 
-    Core::Telemetry().AddField(Telemetry::FieldType::App, "Frontend", "Qt");
-
     if (result != Core::System::ResultStatus::Success) {
         switch (result) {
         case Core::System::ResultStatus::ErrorGetLoader:
@@ -409,6 +407,7 @@ bool GMainWindow::LoadROM(const QString& filename) {
         }
         return false;
     }
+    Core::Telemetry().AddField(Telemetry::FieldType::App, "Frontend", "Qt");
     return true;
 }
 
@@ -777,9 +776,11 @@ void GMainWindow::closeEvent(QCloseEvent* event) {
         return;
     }
 
-    UISettings::values.geometry = saveGeometry();
+    if (ui.action_Fullscreen->isChecked()) {
+        UISettings::values.geometry = saveGeometry();
+        UISettings::values.renderwindow_geometry = render_window->saveGeometry();
+    }
     UISettings::values.state = saveState();
-    UISettings::values.renderwindow_geometry = render_window->saveGeometry();
 #if MICROPROFILE_ENABLED
     UISettings::values.microprofile_geometry = microProfileDialog->saveGeometry();
     UISettings::values.microprofile_visible = microProfileDialog->isVisible();

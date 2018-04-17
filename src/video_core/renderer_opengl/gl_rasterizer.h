@@ -15,10 +15,12 @@
 #include "common/common_types.h"
 #include "common/hash.h"
 #include "common/vector_math.h"
+#include "video_core/engines/maxwell_3d.h"
 #include "video_core/rasterizer_interface.h"
 #include "video_core/renderer_opengl/gl_rasterizer_cache.h"
 #include "video_core/renderer_opengl/gl_resource_manager.h"
 #include "video_core/renderer_opengl/gl_shader_gen.h"
+#include "video_core/renderer_opengl/gl_shader_manager.h"
 #include "video_core/renderer_opengl/gl_state.h"
 #include "video_core/renderer_opengl/gl_stream_buffer.h"
 
@@ -45,7 +47,7 @@ public:
     /// OpenGL shader generated for a given Maxwell register state
     struct MaxwellShader {
         /// OpenGL shader resource
-        OGLShader shader;
+        OGLProgram shader;
     };
 
     struct VertexShader {
@@ -56,40 +58,46 @@ public:
         OGLShader shader;
     };
 
-    /// Uniform structure for the Uniform Buffer Object, all vectors must be 16-byte aligned
-    // NOTE: Always keep a vec4 at the end. The GL spec is not clear wether the alignment at
-    //       the end of a uniform block is included in UNIFORM_BLOCK_DATA_SIZE or not.
-    //       Not following that rule will cause problems on some AMD drivers.
-    struct UniformData {};
-
-    // static_assert(
-    //    sizeof(UniformData) == 0x460,
-    //    "The size of the UniformData structure has changed, update the structure in the shader");
-    static_assert(sizeof(UniformData) < 16384,
-                  "UniformData structure must be less than 16kb as per the OpenGL spec");
-
-    struct VSUniformData {};
-    // static_assert(
-    //    sizeof(VSUniformData) == 1856,
-    //    "The size of the VSUniformData structure has changed, update the structure in the
-    //    shader");
-    static_assert(sizeof(VSUniformData) < 16384,
-                  "VSUniformData structure must be less than 16kb as per the OpenGL spec");
-
-    struct FSUniformData {};
-    // static_assert(
-    //    sizeof(FSUniformData) == 1856,
-    //    "The size of the FSUniformData structure has changed, update the structure in the
-    //    shader");
-    static_assert(sizeof(FSUniformData) < 16384,
-                  "FSUniformData structure must be less than 16kb as per the OpenGL spec");
-
 private:
-    struct SamplerInfo {};
+    class SamplerInfo {
+    public:
+        OGLSampler sampler;
+
+        /// Creates the sampler object, initializing its state so that it's in sync with the
+        /// SamplerInfo struct.
+        void Create();
+        /// Syncs the sampler object with the config, updating any necessary state.
+        void SyncWithConfig(const Tegra::Texture::TSCEntry& config);
+
+    private:
+        Tegra::Texture::TextureFilter mag_filter;
+        Tegra::Texture::TextureFilter min_filter;
+        Tegra::Texture::WrapMode wrap_u;
+        Tegra::Texture::WrapMode wrap_v;
+        u32 border_color_r;
+        u32 border_color_g;
+        u32 border_color_b;
+        u32 border_color_a;
+    };
 
     /// Binds the framebuffer color and depth surface
     void BindFramebufferSurfaces(const Surface& color_surface, const Surface& depth_surface,
                                  bool has_stencil);
+
+    /// Binds the required textures to OpenGL before drawing a batch.
+    void BindTextures();
+
+    /*
+     * Configures the current constbuffers to use for the draw command.
+     * @param stage The shader stage to configure buffers for.
+     * @param program The OpenGL program object that contains the specified stage.
+     * @param current_bindpoint The offset at which to start counting new buffer bindpoints.
+     * @param entries Vector describing the buffers that are actually used in the guest shader.
+     * @returns The next available bindpoint for use in the next shader stage.
+     */
+    u32 SetupConstBuffers(Tegra::Engines::Maxwell3D::Regs::ShaderStage stage, GLuint program,
+                          u32 current_bindpoint,
+                          const std::vector<GLShader::ConstBufferEntry>& entries);
 
     /// Syncs the viewport to match the guest state
     void SyncViewport(const MathUtil::Rectangle<u32>& surfaces_rect, u16 res_scale);
@@ -99,9 +107,6 @@ private:
 
     /// Syncs the clip coefficients to match the guest state
     void SyncClipCoef();
-
-    /// Sets the OpenGL shader in accordance with the current guest state
-    void SetShader();
 
     /// Syncs the cull mode to match the guest state
     void SyncCullMode();
@@ -130,23 +135,16 @@ private:
 
     RasterizerCacheOpenGL res_cache;
 
-    /// Shader used for test renderering - to be removed once we have emulated shaders
-    MaxwellShader test_shader{};
-
-    const MaxwellShader* current_shader{};
-    bool shader_dirty{};
-
-    struct {
-        UniformData data;
-        bool dirty;
-    } uniform_block_data = {};
-
-    OGLPipeline pipeline;
+    std::unique_ptr<GLShader::ProgramManager> shader_program_manager;
     OGLVertexArray sw_vao;
     OGLVertexArray hw_vao;
     std::array<bool, 16> hw_vao_enabled_attributes;
 
-    std::array<SamplerInfo, 32> texture_samplers;
+    std::array<SamplerInfo, GLShader::NumTextureSamplers> texture_samplers;
+    std::array<std::array<OGLBuffer, Tegra::Engines::Maxwell3D::Regs::MaxConstBuffers>,
+               Tegra::Engines::Maxwell3D::Regs::MaxShaderStage>
+        ssbos;
+
     static constexpr size_t VERTEX_BUFFER_SIZE = 128 * 1024 * 1024;
     std::unique_ptr<OGLStreamBuffer> vertex_buffer;
     OGLBuffer uniform_buffer;
@@ -157,22 +155,11 @@ private:
 
     GLsizeiptr vs_input_size;
 
-    void AnalyzeVertexArray(bool is_indexed);
     void SetupVertexArray(u8* array_ptr, GLintptr buffer_offset);
 
-    OGLBuffer vs_uniform_buffer;
-    std::unordered_map<GLShader::MaxwellVSConfig, VertexShader*> vs_shader_map;
-    std::unordered_map<std::string, VertexShader> vs_shader_cache;
-    OGLShader vs_default_shader;
+    std::array<OGLBuffer, Tegra::Engines::Maxwell3D::Regs::MaxShaderStage> uniform_buffers;
 
-    void SetupVertexShader(VSUniformData* ub_ptr, GLintptr buffer_offset);
-
-    OGLBuffer fs_uniform_buffer;
-    std::unordered_map<GLShader::MaxwellFSConfig, FragmentShader*> fs_shader_map;
-    std::unordered_map<std::string, FragmentShader> fs_shader_cache;
-    OGLShader fs_default_shader;
-
-    void SetupFragmentShader(FSUniformData* ub_ptr, GLintptr buffer_offset);
+    void SetupShaders(u8* buffer_ptr, GLintptr buffer_offset, size_t ptr_pos);
 
     enum class AccelDraw { Disabled, Arrays, Indexed };
     AccelDraw accelerate_draw;

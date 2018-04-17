@@ -23,7 +23,7 @@ public:
         : ServiceFramework("IStorage"), backend(std::move(backend)) {
         static const FunctionInfo functions[] = {
             {0, &IStorage::Read, "Read"}, {1, nullptr, "Write"},   {2, nullptr, "Flush"},
-            {3, nullptr, "SetSize"},      {4, nullptr, "GetSize"},
+            {3, nullptr, "SetSize"},      {4, nullptr, "GetSize"}, {5, nullptr, "OperateRange"},
         };
         RegisterHandlers(functions);
     }
@@ -72,8 +72,9 @@ public:
     explicit IFile(std::unique_ptr<FileSys::StorageBackend>&& backend)
         : ServiceFramework("IFile"), backend(std::move(backend)) {
         static const FunctionInfo functions[] = {
-            {0, &IFile::Read, "Read"},       {1, &IFile::Write, "Write"},     {2, nullptr, "Flush"},
-            {3, &IFile::SetSize, "SetSize"}, {4, &IFile::GetSize, "GetSize"},
+            {0, &IFile::Read, "Read"},       {1, &IFile::Write, "Write"},
+            {2, &IFile::Flush, "Flush"},     {3, &IFile::SetSize, "SetSize"},
+            {4, &IFile::GetSize, "GetSize"}, {5, nullptr, "OperateRange"},
         };
         RegisterHandlers(functions);
     }
@@ -146,6 +147,14 @@ private:
             rb.Push(res.Code());
             return;
         }
+
+        IPC::ResponseBuilder rb{ctx, 2};
+        rb.Push(RESULT_SUCCESS);
+    }
+
+    void Flush(Kernel::HLERequestContext& ctx) {
+        LOG_DEBUG(Service_FS, "called");
+        backend->Flush();
 
         IPC::ResponseBuilder rb{ctx, 2};
         rb.Push(RESULT_SUCCESS);
@@ -227,11 +236,21 @@ public:
         : ServiceFramework("IFileSystem"), backend(std::move(backend)) {
         static const FunctionInfo functions[] = {
             {0, &IFileSystem::CreateFile, "CreateFile"},
+            {1, &IFileSystem::DeleteFile, "DeleteFile"},
             {2, &IFileSystem::CreateDirectory, "CreateDirectory"},
+            {3, nullptr, "DeleteDirectory"},
+            {4, nullptr, "DeleteDirectoryRecursively"},
+            {5, nullptr, "RenameFile"},
+            {6, nullptr, "RenameDirectory"},
             {7, &IFileSystem::GetEntryType, "GetEntryType"},
             {8, &IFileSystem::OpenFile, "OpenFile"},
             {9, &IFileSystem::OpenDirectory, "OpenDirectory"},
             {10, &IFileSystem::Commit, "Commit"},
+            {11, nullptr, "GetFreeSpaceSize"},
+            {12, nullptr, "GetTotalSpaceSize"},
+            {13, nullptr, "CleanDirectoryRecursively"},
+            {14, nullptr, "GetFileTimeStampRaw"},
+            {15, nullptr, "QueryEntry"},
         };
         RegisterHandlers(functions);
     }
@@ -252,6 +271,20 @@ public:
 
         IPC::ResponseBuilder rb{ctx, 2};
         rb.Push(backend->CreateFile(name, size));
+    }
+
+    void DeleteFile(Kernel::HLERequestContext& ctx) {
+        IPC::RequestParser rp{ctx};
+
+        auto file_buffer = ctx.ReadBuffer();
+        auto end = std::find(file_buffer.begin(), file_buffer.end(), '\0');
+
+        std::string name(file_buffer.begin(), end);
+
+        LOG_DEBUG(Service_FS, "called file %s", name.c_str());
+
+        IPC::ResponseBuilder rb{ctx, 2};
+        rb.Push(backend->DeleteFile(name));
     }
 
     void CreateDirectory(Kernel::HLERequestContext& ctx) {
@@ -356,14 +389,94 @@ private:
 
 FSP_SRV::FSP_SRV() : ServiceFramework("fsp-srv") {
     static const FunctionInfo functions[] = {
-        {1, &FSP_SRV::Initalize, "Initalize"},
+        {0, nullptr, "MountContent"},
+        {1, &FSP_SRV::Initialize, "Initialize"},
+        {2, nullptr, "OpenDataFileSystemByCurrentProcess"},
+        {7, nullptr, "OpenFileSystemWithPatch"},
+        {8, nullptr, "OpenFileSystemWithId"},
+        {9, nullptr, "OpenDataFileSystemByApplicationId"},
+        {11, nullptr, "OpenBisFileSystem"},
+        {12, nullptr, "OpenBisStorage"},
+        {13, nullptr, "InvalidateBisCache"},
+        {17, nullptr, "OpenHostFileSystem"},
         {18, &FSP_SRV::MountSdCard, "MountSdCard"},
+        {19, nullptr, "FormatSdCardFileSystem"},
+        {21, nullptr, "DeleteSaveDataFileSystem"},
         {22, &FSP_SRV::CreateSaveData, "CreateSaveData"},
+        {23, nullptr, "CreateSaveDataFileSystemBySystemSaveDataId"},
+        {24, nullptr, "RegisterSaveDataFileSystemAtomicDeletion"},
+        {25, nullptr, "DeleteSaveDataFileSystemBySaveDataSpaceId"},
+        {26, nullptr, "FormatSdCardDryRun"},
+        {27, nullptr, "IsExFatSupported"},
+        {28, nullptr, "DeleteSaveDataFileSystemBySaveDataAttribute"},
+        {30, nullptr, "OpenGameCardStorage"},
+        {31, nullptr, "OpenGameCardFileSystem"},
+        {32, nullptr, "ExtendSaveDataFileSystem"},
+        {33, nullptr, "DeleteCacheStorage"},
+        {34, nullptr, "GetCacheStorageSize"},
         {51, &FSP_SRV::MountSaveData, "MountSaveData"},
+        {52, nullptr, "OpenSaveDataFileSystemBySystemSaveDataId"},
+        {53, nullptr, "OpenReadOnlySaveDataFileSystem"},
+        {57, nullptr, "ReadSaveDataFileSystemExtraDataBySaveDataSpaceId"},
+        {58, nullptr, "ReadSaveDataFileSystemExtraData"},
+        {59, nullptr, "WriteSaveDataFileSystemExtraData"},
+        {60, nullptr, "OpenSaveDataInfoReader"},
+        {61, nullptr, "OpenSaveDataInfoReaderBySaveDataSpaceId"},
+        {62, nullptr, "OpenCacheStorageList"},
+        {64, nullptr, "OpenSaveDataInternalStorageFileSystem"},
+        {65, nullptr, "UpdateSaveDataMacForDebug"},
+        {66, nullptr, "WriteSaveDataFileSystemExtraData2"},
+        {80, nullptr, "OpenSaveDataMetaFile"},
+        {81, nullptr, "OpenSaveDataTransferManager"},
+        {82, nullptr, "OpenSaveDataTransferManagerVersion2"},
+        {100, nullptr, "OpenImageDirectoryFileSystem"},
+        {110, nullptr, "OpenContentStorageFileSystem"},
         {200, &FSP_SRV::OpenDataStorageByCurrentProcess, "OpenDataStorageByCurrentProcess"},
+        {201, nullptr, "OpenDataStorageByProgramId"},
         {202, nullptr, "OpenDataStorageByDataId"},
         {203, &FSP_SRV::OpenRomStorage, "OpenRomStorage"},
+        {400, nullptr, "OpenDeviceOperator"},
+        {500, nullptr, "OpenSdCardDetectionEventNotifier"},
+        {501, nullptr, "OpenGameCardDetectionEventNotifier"},
+        {510, nullptr, "OpenSystemDataUpdateEventNotifier"},
+        {511, nullptr, "NotifySystemDataUpdateEvent"},
+        {600, nullptr, "SetCurrentPosixTime"},
+        {601, nullptr, "QuerySaveDataTotalSize"},
+        {602, nullptr, "VerifySaveDataFileSystem"},
+        {603, nullptr, "CorruptSaveDataFileSystem"},
+        {604, nullptr, "CreatePaddingFile"},
+        {605, nullptr, "DeleteAllPaddingFiles"},
+        {606, nullptr, "GetRightsId"},
+        {607, nullptr, "RegisterExternalKey"},
+        {608, nullptr, "UnregisterAllExternalKey"},
+        {609, nullptr, "GetRightsIdByPath"},
+        {610, nullptr, "GetRightsIdAndKeyGenerationByPath"},
+        {611, nullptr, "SetCurrentPosixTimeWithTimeDifference"},
+        {612, nullptr, "GetFreeSpaceSizeForSaveData"},
+        {613, nullptr, "VerifySaveDataFileSystemBySaveDataSpaceId"},
+        {614, nullptr, "CorruptSaveDataFileSystemBySaveDataSpaceId"},
+        {615, nullptr, "QuerySaveDataInternalStorageTotalSize"},
+        {620, nullptr, "SetSdCardEncryptionSeed"},
+        {630, nullptr, "SetSdCardAccessibility"},
+        {631, nullptr, "IsSdCardAccessible"},
+        {640, nullptr, "IsSignedSystemPartitionOnSdCardValid"},
+        {700, nullptr, "OpenAccessFailureResolver"},
+        {701, nullptr, "GetAccessFailureDetectionEvent"},
+        {702, nullptr, "IsAccessFailureDetected"},
+        {710, nullptr, "ResolveAccessFailure"},
+        {720, nullptr, "AbandonAccessFailure"},
+        {800, nullptr, "GetAndClearFileSystemProxyErrorInfo"},
+        {1000, nullptr, "SetBisRootForHost"},
+        {1001, nullptr, "SetSaveDataSize"},
+        {1002, nullptr, "SetSaveDataRootPath"},
+        {1003, nullptr, "DisableAutoSaveDataCreation"},
+        {1004, nullptr, "SetGlobalAccessLogMode"},
         {1005, &FSP_SRV::GetGlobalAccessLogMode, "GetGlobalAccessLogMode"},
+        {1006, nullptr, "OutputAccessLogToSdCard"},
+        {1007, nullptr, "RegisterUpdatePartition"},
+        {1008, nullptr, "OpenRegisteredUpdatePartition"},
+        {1009, nullptr, "GetAndClearMemoryReportInfo"},
+        {1100, nullptr, "OverrideSaveDataTransferTokenSignVerificationKey"},
     };
     RegisterHandlers(functions);
 }
@@ -379,7 +492,7 @@ void FSP_SRV::TryLoadRomFS() {
     }
 }
 
-void FSP_SRV::Initalize(Kernel::HLERequestContext& ctx) {
+void FSP_SRV::Initialize(Kernel::HLERequestContext& ctx) {
     LOG_WARNING(Service_FS, "(STUBBED) called");
 
     IPC::ResponseBuilder rb{ctx, 2};

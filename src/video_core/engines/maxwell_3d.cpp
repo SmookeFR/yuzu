@@ -165,6 +165,7 @@ void Maxwell3D::ProcessQueryGet() {
 void Maxwell3D::DrawArrays() {
     LOG_DEBUG(HW_GPU, "called, topology=%d, count=%d", regs.draw.topology.Value(),
               regs.vertex_buffer.count);
+    ASSERT_MSG(!(regs.index_array.count && regs.vertex_buffer.count), "Both indexed and direct?");
 
     auto debug_context = Core::System::GetInstance().GetGPUDebugContext();
 
@@ -176,7 +177,8 @@ void Maxwell3D::DrawArrays() {
         debug_context->OnEvent(Tegra::DebugContext::Event::FinishedPrimitiveBatch, nullptr);
     }
 
-    VideoCore::g_renderer->Rasterizer()->AccelerateDrawBatch(false /*is_indexed*/);
+    const bool is_indexed{regs.index_array.count && !regs.vertex_buffer.count};
+    VideoCore::g_renderer->Rasterizer()->AccelerateDrawBatch(is_indexed);
 }
 
 void Maxwell3D::ProcessCBBind(Regs::ShaderStage stage) {
@@ -231,6 +233,8 @@ Texture::TICEntry Maxwell3D::GetTICEntry(u32 tic_index) const {
 
     // TODO(Subv): Different data types for separate components are not supported
     ASSERT(r_type == g_type && r_type == b_type && r_type == a_type);
+    // TODO(Subv): Only UNORM formats are supported for now.
+    ASSERT(r_type == Texture::ComponentType::UNORM);
 
     return tic_entry;
 }
@@ -297,6 +301,27 @@ std::vector<Texture::FullTextureInfo> Maxwell3D::GetStageTextures(Regs::ShaderSt
 u32 Maxwell3D::GetRegisterValue(u32 method) const {
     ASSERT_MSG(method < Regs::NUM_REGS, "Invalid Maxwell3D register");
     return regs.reg_array[method];
+}
+
+bool Maxwell3D::IsShaderStageEnabled(Regs::ShaderStage stage) const {
+    // The Vertex stage is always enabled.
+    if (stage == Regs::ShaderStage::Vertex)
+        return true;
+
+    switch (stage) {
+    case Regs::ShaderStage::TesselationControl:
+        return regs.shader_config[static_cast<size_t>(Regs::ShaderProgram::TesselationControl)]
+                   .enable != 0;
+    case Regs::ShaderStage::TesselationEval:
+        return regs.shader_config[static_cast<size_t>(Regs::ShaderProgram::TesselationEval)]
+                   .enable != 0;
+    case Regs::ShaderStage::Geometry:
+        return regs.shader_config[static_cast<size_t>(Regs::ShaderProgram::Geometry)].enable != 0;
+    case Regs::ShaderStage::Fragment:
+        return regs.shader_config[static_cast<size_t>(Regs::ShaderProgram::Fragment)].enable != 0;
+    }
+
+    UNREACHABLE();
 }
 
 } // namespace Engines
