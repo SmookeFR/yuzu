@@ -9,13 +9,10 @@
 #include <memory>
 #include <glad/glad.h>
 #include "common/assert.h"
-#include "common/bit_field.h"
 #include "common/logging/log.h"
 #include "core/core.h"
 #include "core/core_timing.h"
 #include "core/frontend/emu_window.h"
-#include "core/hw/hw.h"
-#include "core/hw/lcd.h"
 #include "core/memory.h"
 #include "core/settings.h"
 #include "core/tracer/recorder.h"
@@ -57,7 +54,7 @@ uniform sampler2D color_texture;
 void main() {
     // Swap RGBA -> ABGR so we don't have to do this on the CPU. This needs to change if we have to
     // support more framebuffer pixel formats.
-    color = texture(color_texture, frag_tex_coord).abgr;
+    color = texture(color_texture, frag_tex_coord);
 }
 )";
 
@@ -155,7 +152,8 @@ void RendererOpenGL::LoadFBToScreenInfo(const Tegra::FramebufferConfig& framebuf
         screen_info.display_texture = screen_info.texture.resource.handle;
         screen_info.display_texcoords = MathUtil::Rectangle<float>(0.f, 0.f, 1.f, 1.f);
 
-        Rasterizer()->FlushRegion(framebuffer_addr, size_in_bytes);
+        Memory::RasterizerFlushVirtualRegion(framebuffer_addr, size_in_bytes,
+                                             Memory::FlushMode::Flush);
 
         VideoCore::MortonCopyPixels128(framebuffer.width, framebuffer.height, bytes_per_pixel, 4,
                                        Memory::GetPointer(framebuffer_addr),
@@ -210,7 +208,7 @@ void RendererOpenGL::InitOpenGLObjects() {
                  0.0f);
 
     // Link shaders and get variable locations
-    shader.Create(vertex_shader, nullptr, fragment_shader);
+    shader.CreateFromSource(vertex_shader, nullptr, fragment_shader);
     state.draw.shader_program = shader.handle;
     state.Apply();
     uniform_modelview_matrix = glGetUniformLocation(shader.handle, "modelview_matrix");
@@ -272,10 +270,9 @@ void RendererOpenGL::ConfigureFramebufferTexture(TextureInfo& texture,
     GLint internal_format;
     switch (framebuffer.pixel_format) {
     case Tegra::FramebufferConfig::PixelFormat::ABGR8:
-        // Use RGBA8 and swap in the fragment shader
         internal_format = GL_RGBA;
         texture.gl_format = GL_RGBA;
-        texture.gl_type = GL_UNSIGNED_INT_8_8_8_8;
+        texture.gl_type = GL_UNSIGNED_INT_8_8_8_8_REV;
         gl_framebuffer_data.resize(texture.width * texture.height * 4);
         break;
     default:
@@ -298,23 +295,24 @@ void RendererOpenGL::DrawScreenTriangles(const ScreenInfo& screen_info, float x,
     const auto& texcoords = screen_info.display_texcoords;
     auto left = texcoords.left;
     auto right = texcoords.right;
-    if (framebuffer_transform_flags != Tegra::FramebufferConfig::TransformFlags::Unset)
+    if (framebuffer_transform_flags != Tegra::FramebufferConfig::TransformFlags::Unset) {
         if (framebuffer_transform_flags == Tegra::FramebufferConfig::TransformFlags::FlipV) {
             // Flip the framebuffer vertically
             left = texcoords.right;
             right = texcoords.left;
         } else {
             // Other transformations are unsupported
-            LOG_CRITICAL(Render_OpenGL, "Unsupported framebuffer_transform_flags=%d",
-                         framebuffer_transform_flags);
+            NGLOG_CRITICAL(Render_OpenGL, "Unsupported framebuffer_transform_flags={}",
+                           static_cast<u32>(framebuffer_transform_flags));
             UNIMPLEMENTED();
         }
+    }
 
     std::array<ScreenRectVertex, 4> vertices = {{
-        ScreenRectVertex(x, y, texcoords.top, right),
-        ScreenRectVertex(x + w, y, texcoords.bottom, right),
-        ScreenRectVertex(x, y + h, texcoords.top, left),
-        ScreenRectVertex(x + w, y + h, texcoords.bottom, left),
+        ScreenRectVertex(x, y, texcoords.top, left),
+        ScreenRectVertex(x + w, y, texcoords.bottom, left),
+        ScreenRectVertex(x, y + h, texcoords.top, right),
+        ScreenRectVertex(x + w, y + h, texcoords.bottom, right),
     }};
 
     state.texture_units[0].texture_2d = screen_info.display_texture;
@@ -400,21 +398,22 @@ static const char* GetType(GLenum type) {
 
 static void APIENTRY DebugHandler(GLenum source, GLenum type, GLuint id, GLenum severity,
                                   GLsizei length, const GLchar* message, const void* user_param) {
-    Log::Level level;
+    const char format[] = "{} {} {}: {}";
+    const char* const str_source = GetSource(source);
+    const char* const str_type = GetType(type);
+
     switch (severity) {
     case GL_DEBUG_SEVERITY_HIGH:
-        level = Log::Level::Error;
+        NGLOG_ERROR(Render_OpenGL, format, str_source, str_type, id, message);
         break;
     case GL_DEBUG_SEVERITY_MEDIUM:
-        level = Log::Level::Warning;
+        NGLOG_WARNING(Render_OpenGL, format, str_source, str_type, id, message);
         break;
     case GL_DEBUG_SEVERITY_NOTIFICATION:
     case GL_DEBUG_SEVERITY_LOW:
-        level = Log::Level::Debug;
+        NGLOG_DEBUG(Render_OpenGL, format, str_source, str_type, id, message);
         break;
     }
-    LOG_GENERIC(Log::Class::Render_OpenGL, level, "%s %s %d: %s", GetSource(source), GetType(type),
-                id, message);
 }
 
 /// Initialize the renderer
@@ -430,9 +429,9 @@ bool RendererOpenGL::Init() {
     const char* gpu_vendor{reinterpret_cast<char const*>(glGetString(GL_VENDOR))};
     const char* gpu_model{reinterpret_cast<char const*>(glGetString(GL_RENDERER))};
 
-    LOG_INFO(Render_OpenGL, "GL_VERSION: %s", gl_version);
-    LOG_INFO(Render_OpenGL, "GL_VENDOR: %s", gpu_vendor);
-    LOG_INFO(Render_OpenGL, "GL_RENDERER: %s", gpu_model);
+    NGLOG_INFO(Render_OpenGL, "GL_VERSION: {}", gl_version);
+    NGLOG_INFO(Render_OpenGL, "GL_VENDOR: {}", gpu_vendor);
+    NGLOG_INFO(Render_OpenGL, "GL_RENDERER: {}", gpu_model);
 
     Core::Telemetry().AddField(Telemetry::FieldType::UserSystem, "GPU_Vendor", gpu_vendor);
     Core::Telemetry().AddField(Telemetry::FieldType::UserSystem, "GPU_Model", gpu_model);

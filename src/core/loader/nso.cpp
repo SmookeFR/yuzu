@@ -73,7 +73,7 @@ static std::vector<u8> ReadSegment(FileUtil::IOFile& file, const NsoSegmentHeade
 
     file.Seek(header.offset, SEEK_SET);
     if (compressed_size != file.ReadBytes(compressed_data.data(), compressed_size)) {
-        LOG_CRITICAL(Loader, "Failed to read %d NSO LZ4 compressed bytes", compressed_size);
+        NGLOG_CRITICAL(Loader, "Failed to read {} NSO LZ4 compressed bytes", compressed_size);
         return {};
     }
 
@@ -84,7 +84,7 @@ static std::vector<u8> ReadSegment(FileUtil::IOFile& file, const NsoSegmentHeade
         reinterpret_cast<char*>(uncompressed_data.data()), compressed_size, header.size);
 
     ASSERT_MSG(bytes_uncompressed == header.size && bytes_uncompressed == uncompressed_data.size(),
-               "%d != %u != %zu", bytes_uncompressed, header.size, uncompressed_data.size());
+               "{} != {} != {}", bytes_uncompressed, header.size, uncompressed_data.size());
 
     return uncompressed_data;
 }
@@ -158,14 +158,13 @@ ResultStatus AppLoader_NSO::Load(Kernel::SharedPtr<Kernel::Process>& process) {
 
     // Load module
     LoadModule(filepath, Memory::PROCESS_IMAGE_VADDR);
-    LOG_DEBUG(Loader, "loaded module %s @ 0x%" PRIx64, filepath.c_str(),
-              Memory::PROCESS_IMAGE_VADDR);
+    NGLOG_DEBUG(Loader, "loaded module {} @ 0x{:X}", filepath, Memory::PROCESS_IMAGE_VADDR);
 
     process->svc_access_mask.set();
     process->address_mappings = default_address_mappings;
     process->resource_limit =
         Kernel::ResourceLimit::GetForCategory(Kernel::ResourceLimitCategory::APPLICATION);
-    process->Run(Memory::PROCESS_IMAGE_VADDR, 48, Memory::DEFAULT_STACK_SIZE);
+    process->Run(Memory::PROCESS_IMAGE_VADDR, THREADPRIO_DEFAULT, Memory::DEFAULT_STACK_SIZE);
 
     is_loaded = true;
     return ResultStatus::Success;

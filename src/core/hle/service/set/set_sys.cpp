@@ -7,8 +7,7 @@
 #include "core/hle/kernel/client_port.h"
 #include "core/hle/service/set/set_sys.h"
 
-namespace Service {
-namespace Set {
+namespace Service::Set {
 
 void SET_SYS::GetColorSetId(Kernel::HLERequestContext& ctx) {
 
@@ -17,7 +16,7 @@ void SET_SYS::GetColorSetId(Kernel::HLERequestContext& ctx) {
     rb.Push(RESULT_SUCCESS);
     rb.Push<u32>(0);
 
-    LOG_WARNING(Service_SET, "(STUBBED) called");
+    NGLOG_WARNING(Service_SET, "(STUBBED) called");
 }
 
 SET_SYS::SET_SYS() : ServiceFramework("set:sys") {
@@ -27,6 +26,7 @@ SET_SYS::SET_SYS() : ServiceFramework("set:sys") {
         {2, nullptr, "GetNetworkSettings"},
         {3, nullptr, "GetFirmwareVersion"},
         {4, nullptr, "GetFirmwareVersion2"},
+        {5, nullptr, "GetFirmwareVersionDigest"},
         {7, nullptr, "GetLockScreenFlag"},
         {8, nullptr, "SetLockScreenFlag"},
         {9, nullptr, "GetBacklightSettings"},
@@ -159,9 +159,17 @@ SET_SYS::SET_SYS() : ServiceFramework("set:sys") {
         {138, nullptr, "GetWebInspectorFlag"},
         {139, nullptr, "GetAllowedSslHosts"},
         {140, nullptr, "GetHostFsMountPoint"},
+        {141, nullptr, "GetRequiresRunRepairTimeReviser"},
+        {142, nullptr, "SetRequiresRunRepairTimeReviser"},
+        {143, nullptr, "SetBlePairingSettings"},
+        {144, nullptr, "GetBlePairingSettings"},
+        {145, nullptr, "GetConsoleSixAxisSensorAngularVelocityTimeBias"},
+        {146, nullptr, "SetConsoleSixAxisSensorAngularVelocityTimeBias"},
+        {147, nullptr, "GetConsoleSixAxisSensorAngularAcceleration"},
+        {148, nullptr, "SetConsoleSixAxisSensorAngularAcceleration"},
+        {149, nullptr, "GetRebootlessSystemUpdateVersion"},
     };
     RegisterHandlers(functions);
 }
 
-} // namespace Set
-} // namespace Service
+} // namespace Service::Set

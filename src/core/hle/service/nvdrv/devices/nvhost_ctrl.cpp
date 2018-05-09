@@ -6,13 +6,11 @@
 #include "common/logging/log.h"
 #include "core/hle/service/nvdrv/devices/nvhost_ctrl.h"
 
-namespace Service {
-namespace Nvidia {
-namespace Devices {
+namespace Service::Nvidia::Devices {
 
 u32 nvhost_ctrl::ioctl(Ioctl command, const std::vector<u8>& input, std::vector<u8>& output) {
-    LOG_DEBUG(Service_NVDRV, "called, command=0x%08x, input_size=0x%zx, output_size=0x%zx",
-              command.raw, input.size(), output.size());
+    NGLOG_DEBUG(Service_NVDRV, "called, command=0x{:08X}, input_size=0x{:X}, output_size=0x{:X}",
+                command.raw, input.size(), output.size());
 
     switch (static_cast<IoctlCommand>(command.raw)) {
     case IoctlCommand::IocGetConfigCommand:
@@ -20,15 +18,15 @@ u32 nvhost_ctrl::ioctl(Ioctl command, const std::vector<u8>& input, std::vector<
     case IoctlCommand::IocCtrlEventWaitCommand:
         return IocCtrlEventWait(input, output);
     }
-    UNIMPLEMENTED();
+    UNIMPLEMENTED_MSG("Unimplemented ioctl");
     return 0;
 }
 
 u32 nvhost_ctrl::NvOsGetConfigU32(const std::vector<u8>& input, std::vector<u8>& output) {
     IocGetConfigParams params{};
     std::memcpy(&params, input.data(), sizeof(params));
-    LOG_DEBUG(Service_NVDRV, "called, setting=%s!%s", params.domain_str.data(),
-              params.param_str.data());
+    NGLOG_DEBUG(Service_NVDRV, "called, setting={}!{}", params.domain_str.data(),
+                params.param_str.data());
 
     if (!strcmp(params.domain_str.data(), "nv")) {
         if (!strcmp(params.param_str.data(), "NV_MEMORY_PROFILER")) {
@@ -50,8 +48,8 @@ u32 nvhost_ctrl::NvOsGetConfigU32(const std::vector<u8>& input, std::vector<u8>&
 u32 nvhost_ctrl::IocCtrlEventWait(const std::vector<u8>& input, std::vector<u8>& output) {
     IocCtrlEventWaitParams params{};
     std::memcpy(&params, input.data(), sizeof(params));
-    LOG_WARNING(Service_NVDRV, "(STUBBED) called, syncpt_id=%u threshold=%u timeout=%d",
-                params.syncpt_id, params.threshold, params.timeout);
+    NGLOG_WARNING(Service_NVDRV, "(STUBBED) called, syncpt_id={} threshold={} timeout={}",
+                  params.syncpt_id, params.threshold, params.timeout);
 
     // TODO(Subv): Implement actual syncpt waiting.
     params.value = 0;
@@ -59,6 +57,4 @@ u32 nvhost_ctrl::IocCtrlEventWait(const std::vector<u8>& input, std::vector<u8>&
     return 0;
 }
 
-} // namespace Devices
-} // namespace Nvidia
-} // namespace Service
+} // namespace Service::Nvidia::Devices

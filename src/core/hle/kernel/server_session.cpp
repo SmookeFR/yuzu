@@ -61,6 +61,9 @@ void ServerSession::Acquire(Thread* thread) {
 ResultCode ServerSession::HandleDomainSyncRequest(Kernel::HLERequestContext& context) {
     auto& domain_message_header = context.GetDomainMessageHeader();
     if (domain_message_header) {
+        // Set domain handlers in HLE context, used for domain objects (IPC interfaces) as inputs
+        context.SetDomainRequestHandlers(domain_request_handlers);
+
         // If there is a DomainMessageHeader, then this is CommandType "Request"
         const u32 object_id{context.GetDomainMessageHeader()->object_id};
         switch (domain_message_header->command) {
@@ -68,7 +71,7 @@ ResultCode ServerSession::HandleDomainSyncRequest(Kernel::HLERequestContext& con
             return domain_request_handlers[object_id - 1]->HandleSyncRequest(context);
 
         case IPC::DomainMessageHeader::CommandType::CloseVirtualHandle: {
-            LOG_DEBUG(IPC, "CloseVirtualHandle, object_id=0x%08X", object_id);
+            NGLOG_DEBUG(IPC, "CloseVirtualHandle, object_id=0x{:08X}", object_id);
 
             domain_request_handlers[object_id - 1] = nullptr;
 
@@ -78,8 +81,8 @@ ResultCode ServerSession::HandleDomainSyncRequest(Kernel::HLERequestContext& con
         }
         }
 
-        LOG_CRITICAL(IPC, "Unknown domain command=%d",
-                     static_cast<int>(domain_message_header->command.Value()));
+        NGLOG_CRITICAL(IPC, "Unknown domain command={}",
+                       static_cast<int>(domain_message_header->command.Value()));
         ASSERT(false);
     }
 

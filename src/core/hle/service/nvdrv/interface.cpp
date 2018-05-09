@@ -9,11 +9,10 @@
 #include "core/hle/service/nvdrv/interface.h"
 #include "core/hle/service/nvdrv/nvdrv.h"
 
-namespace Service {
-namespace Nvidia {
+namespace Service::Nvidia {
 
 void NVDRV::Open(Kernel::HLERequestContext& ctx) {
-    LOG_DEBUG(Service_NVDRV, "called");
+    NGLOG_DEBUG(Service_NVDRV, "called");
 
     const auto& buffer = ctx.ReadBuffer();
     std::string device_name(buffer.begin(), buffer.end());
@@ -26,7 +25,7 @@ void NVDRV::Open(Kernel::HLERequestContext& ctx) {
 }
 
 void NVDRV::Ioctl(Kernel::HLERequestContext& ctx) {
-    LOG_DEBUG(Service_NVDRV, "called");
+    NGLOG_DEBUG(Service_NVDRV, "called");
 
     IPC::RequestParser rp{ctx};
     u32 fd = rp.Pop<u32>();
@@ -42,7 +41,7 @@ void NVDRV::Ioctl(Kernel::HLERequestContext& ctx) {
 }
 
 void NVDRV::Close(Kernel::HLERequestContext& ctx) {
-    LOG_DEBUG(Service_NVDRV, "called");
+    NGLOG_DEBUG(Service_NVDRV, "called");
 
     IPC::RequestParser rp{ctx};
     u32 fd = rp.Pop<u32>();
@@ -54,7 +53,7 @@ void NVDRV::Close(Kernel::HLERequestContext& ctx) {
 }
 
 void NVDRV::Initialize(Kernel::HLERequestContext& ctx) {
-    LOG_WARNING(Service_NVDRV, "(STUBBED) called");
+    NGLOG_WARNING(Service_NVDRV, "(STUBBED) called");
     IPC::ResponseBuilder rb{ctx, 3};
     rb.Push(RESULT_SUCCESS);
     rb.Push<u32>(0);
@@ -64,7 +63,7 @@ void NVDRV::QueryEvent(Kernel::HLERequestContext& ctx) {
     IPC::RequestParser rp{ctx};
     u32 fd = rp.Pop<u32>();
     u32 event_id = rp.Pop<u32>();
-    LOG_WARNING(Service_NVDRV, "(STUBBED) called, fd=%x, event_id=%x", fd, event_id);
+    NGLOG_WARNING(Service_NVDRV, "(STUBBED) called, fd={:X}, event_id={:X}", fd, event_id);
 
     IPC::ResponseBuilder rb{ctx, 3, 1};
     rb.Push(RESULT_SUCCESS);
@@ -76,14 +75,14 @@ void NVDRV::SetClientPID(Kernel::HLERequestContext& ctx) {
     IPC::RequestParser rp{ctx};
     pid = rp.Pop<u64>();
 
-    LOG_WARNING(Service_NVDRV, "(STUBBED) called, pid=0x%" PRIx64, pid);
+    NGLOG_WARNING(Service_NVDRV, "(STUBBED) called, pid=0x{:X}", pid);
     IPC::ResponseBuilder rb{ctx, 3};
     rb.Push(RESULT_SUCCESS);
     rb.Push<u32>(0);
 }
 
 void NVDRV::FinishInitialize(Kernel::HLERequestContext& ctx) {
-    LOG_WARNING(Service_NVDRV, "(STUBBED) called");
+    NGLOG_WARNING(Service_NVDRV, "(STUBBED) called");
     IPC::ResponseBuilder rb{ctx, 2};
     rb.Push(RESULT_SUCCESS);
 }
@@ -96,7 +95,14 @@ NVDRV::NVDRV(std::shared_ptr<Module> nvdrv, const char* name)
         {2, &NVDRV::Close, "Close"},
         {3, &NVDRV::Initialize, "Initialize"},
         {4, &NVDRV::QueryEvent, "QueryEvent"},
+        {5, nullptr, "MapSharedMem"},
+        {6, nullptr, "GetStatus"},
+        {7, nullptr, "ForceSetClientPID"},
         {8, &NVDRV::SetClientPID, "SetClientPID"},
+        {9, nullptr, "DumpGraphicsMemoryInfo"},
+        {10, nullptr, "InitializeDevtools"},
+        {11, nullptr, "Ioctl2"},
+        {12, nullptr, "Ioctl3"},
         {13, &NVDRV::FinishInitialize, "FinishInitialize"},
     };
     RegisterHandlers(functions);
@@ -104,5 +110,4 @@ NVDRV::NVDRV(std::shared_ptr<Module> nvdrv, const char* name)
     query_event = Kernel::Event::Create(Kernel::ResetType::OneShot, "NVDRV::query_event");
 }
 
-} // namespace Nvidia
-} // namespace Service
+} // namespace Service::Nvidia

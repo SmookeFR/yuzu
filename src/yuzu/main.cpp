@@ -44,6 +44,15 @@
 Q_IMPORT_PLUGIN(QWindowsIntegrationPlugin);
 #endif
 
+#ifdef _WIN32
+extern "C" {
+// tells Nvidia and AMD drivers to use the dedicated GPU by default on laptops with switchable
+// graphics
+__declspec(dllexport) unsigned long NvOptimusEnablement = 0x00000001;
+__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+}
+#endif
+
 /**
  * "Callouts" are one-time instructional messages shown to the user. In the config settings, there
  * is a bitfield "callout_flags" options, used to track if a message has already been shown to the
@@ -347,24 +356,20 @@ bool GMainWindow::LoadROM(const QString& filename) {
 
     const Core::System::ResultStatus result{system.Load(render_window, filename.toStdString())};
 
-    Core::Telemetry().AddField(Telemetry::FieldType::App, "Frontend", "Qt");
-
     if (result != Core::System::ResultStatus::Success) {
         switch (result) {
         case Core::System::ResultStatus::ErrorGetLoader:
-            LOG_CRITICAL(Frontend, "Failed to obtain loader for %s!",
-                         filename.toStdString().c_str());
+            NGLOG_CRITICAL(Frontend, "Failed to obtain loader for {}!", filename.toStdString());
             QMessageBox::critical(this, tr("Error while loading ROM!"),
                                   tr("The ROM format is not supported."));
             break;
         case Core::System::ResultStatus::ErrorUnsupportedArch:
-            LOG_CRITICAL(Frontend, "Unsupported architecture detected!",
-                         filename.toStdString().c_str());
+            NGLOG_CRITICAL(Frontend, "Unsupported architecture detected!", filename.toStdString());
             QMessageBox::critical(this, tr("Error while loading ROM!"),
                                   tr("The ROM uses currently unusable 32-bit architecture"));
             break;
         case Core::System::ResultStatus::ErrorSystemMode:
-            LOG_CRITICAL(Frontend, "Failed to load ROM!");
+            NGLOG_CRITICAL(Frontend, "Failed to load ROM!");
             QMessageBox::critical(this, tr("Error while loading ROM!"),
                                   tr("Could not determine the system mode."));
             break;
@@ -409,6 +414,7 @@ bool GMainWindow::LoadROM(const QString& filename) {
         }
         return false;
     }
+    Core::Telemetry().AddField(Telemetry::FieldType::App, "Frontend", "Qt");
     return true;
 }
 
@@ -777,9 +783,11 @@ void GMainWindow::closeEvent(QCloseEvent* event) {
         return;
     }
 
-    UISettings::values.geometry = saveGeometry();
+    if (ui.action_Fullscreen->isChecked()) {
+        UISettings::values.geometry = saveGeometry();
+        UISettings::values.renderwindow_geometry = render_window->saveGeometry();
+    }
     UISettings::values.state = saveState();
-    UISettings::values.renderwindow_geometry = render_window->saveGeometry();
 #if MICROPROFILE_ENABLED
     UISettings::values.microprofile_geometry = microProfileDialog->saveGeometry();
     UISettings::values.microprofile_visible = microProfileDialog->isVisible();
@@ -849,7 +857,7 @@ void GMainWindow::UpdateUITheme() {
         QString theme_uri(":" + UISettings::values.theme + "/style.qss");
         QFile f(theme_uri);
         if (!f.exists()) {
-            LOG_ERROR(Frontend, "Unable to set style, stylesheet file not found");
+            NGLOG_ERROR(Frontend, "Unable to set style, stylesheet file not found");
         } else {
             f.open(QFile::ReadOnly | QFile::Text);
             QTextStream ts(&f);

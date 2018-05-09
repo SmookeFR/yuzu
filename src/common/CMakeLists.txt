@@ -31,17 +31,15 @@ add_library(common STATIC
     bit_set.h
     break_points.cpp
     break_points.h
-    chunk_file.h
-    code_block.h
+    cityhash.cpp
+    cityhash.h
     color.h
     common_funcs.h
     common_paths.h
     common_types.h
     file_util.cpp
     file_util.h
-    hash.cpp
     hash.h
-    linear_disk_cache.h
     logging/backend.cpp
     logging/backend.h
     logging/filter.cpp

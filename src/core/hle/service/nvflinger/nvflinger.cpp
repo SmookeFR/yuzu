@@ -5,6 +5,7 @@
 #include <algorithm>
 
 #include "common/alignment.h"
+#include "common/microprofile.h"
 #include "common/scope_exit.h"
 #include "core/core.h"
 #include "core/core_timing.h"
@@ -15,11 +16,10 @@
 #include "video_core/renderer_base.h"
 #include "video_core/video_core.h"
 
-namespace Service {
-namespace NVFlinger {
+namespace Service::NVFlinger {
 
 constexpr size_t SCREEN_REFRESH_RATE = 60;
-constexpr u64 frame_ticks = static_cast<u64>(BASE_CLOCK_RATE / SCREEN_REFRESH_RATE);
+constexpr u64 frame_ticks = static_cast<u64>(CoreTiming::BASE_CLOCK_RATE / SCREEN_REFRESH_RATE);
 
 NVFlinger::NVFlinger() {
     // Add the different displays to the list of displays.
@@ -48,7 +48,7 @@ NVFlinger::~NVFlinger() {
 }
 
 u64 NVFlinger::OpenDisplay(const std::string& name) {
-    LOG_WARNING(Service, "Opening display %s", name.c_str());
+    NGLOG_WARNING(Service, "Opening display {}", name);
 
     // TODO(Subv): Currently we only support the Default display.
     ASSERT(name == "Default");
@@ -128,6 +128,8 @@ void NVFlinger::Compose() {
         // Search for a queued buffer and acquire it
         auto buffer = buffer_queue->AcquireBuffer();
 
+        MicroProfileFlip();
+
         if (buffer == boost::none) {
             // There was no queued buffer to draw, render previous frame
             Core::System::GetInstance().perf_stats.EndGameFrame();
@@ -162,5 +164,4 @@ Display::Display(u64 id, std::string name) : id(id), name(std::move(name)) {
     vsync_event = Kernel::Event::Create(Kernel::ResetType::Pulse, "Display VSync Event");
 }
 
-} // namespace NVFlinger
-} // namespace Service
+} // namespace Service::NVFlinger

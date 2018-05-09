@@ -8,13 +8,12 @@
 #include "core/hle/service/friend/friend_a.h"
 #include "core/hle/service/friend/friend_u.h"
 
-namespace Service {
-namespace Friend {
+namespace Service::Friend {
 
-void Module::Interface::Unknown(Kernel::HLERequestContext& ctx) {
+void Module::Interface::CreateFriendService(Kernel::HLERequestContext& ctx) {
     IPC::ResponseBuilder rb{ctx, 2};
     rb.Push(RESULT_SUCCESS);
-    LOG_WARNING(Service_Friend, "(STUBBED) called");
+    NGLOG_WARNING(Service_Friend, "(STUBBED) called");
 }
 
 Module::Interface::Interface(std::shared_ptr<Module> module, const char* name)
@@ -26,5 +25,4 @@ void InstallInterfaces(SM::ServiceManager& service_manager) {
     std::make_shared<Friend_U>(module)->InstallAsService(service_manager);
 }
 
-} // namespace Friend
-} // namespace Service
+} // namespace Service::Friend

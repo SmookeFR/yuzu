@@ -2,6 +2,7 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -13,7 +14,6 @@
 #include "common/math_util.h"
 #include "common/microprofile.h"
 #include "common/scope_exit.h"
-#include "common/vector_math.h"
 #include "core/core.h"
 #include "core/hle/kernel/process.h"
 #include "core/settings.h"
@@ -34,37 +34,25 @@ MICROPROFILE_DEFINE(OpenGL_Drawing, "OpenGL", "Drawing", MP_RGB(128, 128, 192));
 MICROPROFILE_DEFINE(OpenGL_Blits, "OpenGL", "Blits", MP_RGB(100, 100, 255));
 MICROPROFILE_DEFINE(OpenGL_CacheManagement, "OpenGL", "Cache Mgmt", MP_RGB(100, 255, 100));
 
-enum class UniformBindings : GLuint { Common, VS, FS };
-
-static void SetShaderUniformBlockBinding(GLuint shader, const char* name, UniformBindings binding,
-                                         size_t expected_size) {
-    GLuint ub_index = glGetUniformBlockIndex(shader, name);
-    if (ub_index != GL_INVALID_INDEX) {
-        GLint ub_size = 0;
-        glGetActiveUniformBlockiv(shader, ub_index, GL_UNIFORM_BLOCK_DATA_SIZE, &ub_size);
-        ASSERT_MSG(ub_size == expected_size,
-                   "Uniform block size did not match! Got %d, expected %zu",
-                   static_cast<int>(ub_size), expected_size);
-        glUniformBlockBinding(shader, ub_index, static_cast<GLuint>(binding));
-    }
-}
-
-static void SetShaderUniformBlockBindings(GLuint shader) {
-    SetShaderUniformBlockBinding(shader, "shader_data", UniformBindings::Common,
-                                 sizeof(RasterizerOpenGL::UniformData));
-    SetShaderUniformBlockBinding(shader, "vs_config", UniformBindings::VS,
-                                 sizeof(RasterizerOpenGL::VSUniformData));
-    SetShaderUniformBlockBinding(shader, "fs_config", UniformBindings::FS,
-                                 sizeof(RasterizerOpenGL::FSUniformData));
-}
-
 RasterizerOpenGL::RasterizerOpenGL() {
-    shader_dirty = true;
-
     has_ARB_buffer_storage = false;
     has_ARB_direct_state_access = false;
     has_ARB_separate_shader_objects = false;
     has_ARB_vertex_attrib_binding = false;
+
+    // Create sampler objects
+    for (size_t i = 0; i < texture_samplers.size(); ++i) {
+        texture_samplers[i].Create();
+        state.texture_units[i].sampler = texture_samplers[i].sampler.handle;
+    }
+
+    // Create SSBOs
+    for (size_t stage = 0; stage < ssbos.size(); ++stage) {
+        for (size_t buffer = 0; buffer < ssbos[stage].size(); ++buffer) {
+            ssbos[stage][buffer].Create();
+            state.draw.const_buffers[stage][buffer].ssbo = ssbos[stage][buffer].handle;
+        }
+    }
 
     GLint ext_num;
     glGetIntegerv(GL_NUM_EXTENSIONS, &ext_num);
@@ -82,6 +70,8 @@ RasterizerOpenGL::RasterizerOpenGL() {
         }
     }
 
+    ASSERT_MSG(has_ARB_separate_shader_objects, "has_ARB_separate_shader_objects is unsupported");
+
     // Clipping plane 0 is always enabled for PICA fixed clip plane z <= 0
     state.clip_distance[0] = true;
 
@@ -96,43 +86,37 @@ RasterizerOpenGL::RasterizerOpenGL() {
     state.draw.uniform_buffer = uniform_buffer.handle;
     state.Apply();
 
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(UniformData), nullptr, GL_STATIC_DRAW);
-    glBindBufferBase(GL_UNIFORM_BUFFER, 0, uniform_buffer.handle);
-
-    uniform_block_data.dirty = true;
-
     // Create render framebuffer
     framebuffer.Create();
 
-    if (has_ARB_separate_shader_objects) {
-        hw_vao.Create();
-        hw_vao_enabled_attributes.fill(false);
+    hw_vao.Create();
+    hw_vao_enabled_attributes.fill(false);
 
-        stream_buffer = OGLStreamBuffer::MakeBuffer(has_ARB_buffer_storage, GL_ARRAY_BUFFER);
-        stream_buffer->Create(STREAM_BUFFER_SIZE, STREAM_BUFFER_SIZE / 2);
-        state.draw.vertex_buffer = stream_buffer->GetHandle();
+    stream_buffer = OGLStreamBuffer::MakeBuffer(has_ARB_buffer_storage, GL_ARRAY_BUFFER);
+    stream_buffer->Create(STREAM_BUFFER_SIZE, STREAM_BUFFER_SIZE / 2);
+    state.draw.vertex_buffer = stream_buffer->GetHandle();
 
-        pipeline.Create();
-        state.draw.program_pipeline = pipeline.handle;
-        state.draw.shader_program = 0;
-        state.draw.vertex_array = hw_vao.handle;
-        state.Apply();
+    shader_program_manager = std::make_unique<GLShader::ProgramManager>();
+    state.draw.shader_program = 0;
+    state.draw.vertex_array = hw_vao.handle;
+    state.Apply();
 
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, stream_buffer->GetHandle());
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, stream_buffer->GetHandle());
 
-        vs_uniform_buffer.Create();
-        glBindBuffer(GL_UNIFORM_BUFFER, vs_uniform_buffer.handle);
-        glBufferData(GL_UNIFORM_BUFFER, sizeof(VSUniformData), nullptr, GL_STREAM_COPY);
-        glBindBufferBase(GL_UNIFORM_BUFFER, 1, vs_uniform_buffer.handle);
-    } else {
-        UNREACHABLE();
+    for (unsigned index = 0; index < uniform_buffers.size(); ++index) {
+        auto& buffer = uniform_buffers[index];
+        buffer.Create();
+        glBindBuffer(GL_UNIFORM_BUFFER, buffer.handle);
+        glBufferData(GL_UNIFORM_BUFFER, sizeof(GLShader::MaxwellUniformData), nullptr,
+                     GL_STREAM_COPY);
+        glBindBufferBase(GL_UNIFORM_BUFFER, index, buffer.handle);
     }
 
     accelerate_draw = AccelDraw::Disabled;
 
     glEnable(GL_BLEND);
 
-    LOG_CRITICAL(Render_OpenGL, "Sync fixed function OpenGL state here!");
+    NGLOG_CRITICAL(Render_OpenGL, "Sync fixed function OpenGL state here!");
 }
 
 RasterizerOpenGL::~RasterizerOpenGL() {
@@ -143,18 +127,8 @@ RasterizerOpenGL::~RasterizerOpenGL() {
     }
 }
 
-void RasterizerOpenGL::AnalyzeVertexArray(bool is_indexed) {
-    const auto& regs = Core::System().GetInstance().GPU().Maxwell3D().regs;
-
-    if (is_indexed) {
-        UNREACHABLE();
-    }
-
-    // TODO(bunnei): Add support for 1+ vertex arrays
-    vs_input_size = regs.vertex_buffer.count * regs.vertex_array[0].stride;
-}
-
-void RasterizerOpenGL::SetupVertexArray(u8* array_ptr, GLintptr buffer_offset) {
+std::pair<u8*, GLintptr> RasterizerOpenGL::SetupVertexArrays(u8* array_ptr,
+                                                             GLintptr buffer_offset) {
     MICROPROFILE_SCOPE(OpenGL_VAO);
     const auto& regs = Core::System().GetInstance().GPU().Maxwell3D().regs;
     const auto& memory_manager = Core::System().GetInstance().GPU().memory_manager;
@@ -163,57 +137,159 @@ void RasterizerOpenGL::SetupVertexArray(u8* array_ptr, GLintptr buffer_offset) {
     state.draw.vertex_buffer = stream_buffer->GetHandle();
     state.Apply();
 
-    // TODO(bunnei): Add support for 1+ vertex arrays
-    const auto& vertex_array{regs.vertex_array[0]};
-    ASSERT_MSG(vertex_array.enable, "vertex array 0 is disabled?");
-    ASSERT_MSG(!vertex_array.divisor, "vertex array 0 divisor is unimplemented!");
-    for (unsigned index = 1; index < Maxwell::NumVertexArrays; ++index) {
-        ASSERT_MSG(!regs.vertex_array[index].enable, "vertex array %d is unimplemented!", index);
+    // Upload all guest vertex arrays sequentially to our buffer
+    for (u32 index = 0; index < Maxwell::NumVertexArrays; ++index) {
+        const auto& vertex_array = regs.vertex_array[index];
+        if (!vertex_array.IsEnabled())
+            continue;
+
+        const Tegra::GPUVAddr start = vertex_array.StartAddress();
+        const Tegra::GPUVAddr end = regs.vertex_array_limit[index].LimitAddress();
+
+        ASSERT(end > start);
+        u64 size = end - start + 1;
+
+        // Copy vertex array data
+        res_cache.FlushRegion(start, size, nullptr);
+        Memory::ReadBlock(*memory_manager->GpuToCpuAddress(start), array_ptr, size);
+
+        // Bind the vertex array to the buffer at the current offset.
+        glBindVertexBuffer(index, stream_buffer->GetHandle(), buffer_offset, vertex_array.stride);
+
+        ASSERT_MSG(vertex_array.divisor == 0, "Vertex buffer divisor unimplemented");
+
+        array_ptr += size;
+        buffer_offset += size;
     }
 
     // Use the vertex array as-is, assumes that the data is formatted correctly for OpenGL.
     // Enables the first 16 vertex attributes always, as we don't know which ones are actually used
-    // until shader time. Note, Tegra technically supports 32, but we're cappinig this to 16 for now
+    // until shader time. Note, Tegra technically supports 32, but we're capping this to 16 for now
     // to avoid OpenGL errors.
+    // TODO(Subv): Analyze the shader to identify which attributes are actually used and don't
+    // assume every shader uses them all.
     for (unsigned index = 0; index < 16; ++index) {
         auto& attrib = regs.vertex_attrib_format[index];
-        glVertexAttribPointer(index, attrib.ComponentCount(), MaxwellToGL::VertexType(attrib),
-                              attrib.IsNormalized() ? GL_TRUE : GL_FALSE, vertex_array.stride,
-                              reinterpret_cast<GLvoid*>(buffer_offset + attrib.offset));
+        NGLOG_DEBUG(HW_GPU, "vertex attrib {}, count={}, size={}, type={}, offset={}, normalize={}",
+                    index, attrib.ComponentCount(), attrib.SizeString(), attrib.TypeString(),
+                    attrib.offset.Value(), attrib.IsNormalized());
+
+        auto& buffer = regs.vertex_array[attrib.buffer];
+        ASSERT(buffer.IsEnabled());
+
         glEnableVertexAttribArray(index);
+        glVertexAttribFormat(index, attrib.ComponentCount(), MaxwellToGL::VertexType(attrib),
+                             attrib.IsNormalized() ? GL_TRUE : GL_FALSE, attrib.offset);
+        glVertexAttribBinding(index, attrib.buffer);
+
         hw_vao_enabled_attributes[index] = true;
     }
 
-    // Copy vertex array data
-    const u32 data_size{vertex_array.stride * regs.vertex_buffer.count};
-    const VAddr data_addr{memory_manager->PhysicalToVirtualAddress(vertex_array.StartAddress())};
-    res_cache.FlushRegion(data_addr, data_size, nullptr);
-    Memory::ReadBlock(data_addr, array_ptr, data_size);
-
-    array_ptr += data_size;
-    buffer_offset += data_size;
+    return {array_ptr, buffer_offset};
 }
 
-void RasterizerOpenGL::SetupVertexShader(VSUniformData* ub_ptr, GLintptr buffer_offset) {
-    MICROPROFILE_SCOPE(OpenGL_VS);
-    LOG_CRITICAL(Render_OpenGL, "Emulated shaders are not supported! Using a passthrough shader.");
-    glUseProgramStages(pipeline.handle, GL_VERTEX_SHADER_BIT, current_shader->shader.handle);
+void RasterizerOpenGL::SetupShaders(u8* buffer_ptr, GLintptr buffer_offset) {
+    // Helper function for uploading uniform data
+    const auto copy_buffer = [&](GLuint handle, GLintptr offset, GLsizeiptr size) {
+        if (has_ARB_direct_state_access) {
+            glCopyNamedBufferSubData(stream_buffer->GetHandle(), handle, offset, 0, size);
+        } else {
+            glBindBuffer(GL_COPY_WRITE_BUFFER, handle);
+            glCopyBufferSubData(GL_ARRAY_BUFFER, GL_COPY_WRITE_BUFFER, offset, 0, size);
+        }
+    };
+
+    auto& gpu = Core::System().GetInstance().GPU().Maxwell3D();
+    ASSERT_MSG(!gpu.regs.shader_config[0].enable, "VertexA is unsupported!");
+
+    // Next available bindpoint to use when uploading the const buffers to the GLSL shaders.
+    u32 current_constbuffer_bindpoint = 0;
+
+    for (unsigned index = 1; index < Maxwell::MaxShaderProgram; ++index) {
+        auto& shader_config = gpu.regs.shader_config[index];
+        const Maxwell::ShaderProgram program{static_cast<Maxwell::ShaderProgram>(index)};
+
+        const auto& stage = index - 1; // Stage indices are 0 - 5
+
+        const bool is_enabled = gpu.IsShaderStageEnabled(static_cast<Maxwell::ShaderStage>(stage));
+
+        // Skip stages that are not enabled
+        if (!is_enabled) {
+            continue;
+        }
+
+        // Upload uniform data as one UBO per stage
+        const GLintptr ubo_offset = buffer_offset;
+        copy_buffer(uniform_buffers[stage].handle, ubo_offset,
+                    sizeof(GLShader::MaxwellUniformData));
+        GLShader::MaxwellUniformData* ub_ptr =
+            reinterpret_cast<GLShader::MaxwellUniformData*>(buffer_ptr);
+        ub_ptr->SetFromRegs(gpu.state.shader_stages[stage]);
+
+        buffer_ptr += sizeof(GLShader::MaxwellUniformData);
+        buffer_offset += sizeof(GLShader::MaxwellUniformData);
+
+        // Fetch program code from memory
+        GLShader::ProgramCode program_code;
+        const u64 gpu_address{gpu.regs.code_address.CodeAddress() + shader_config.offset};
+        const boost::optional<VAddr> cpu_address{gpu.memory_manager.GpuToCpuAddress(gpu_address)};
+        Memory::ReadBlock(*cpu_address, program_code.data(), program_code.size() * sizeof(u64));
+        GLShader::ShaderSetup setup{std::move(program_code)};
+
+        GLShader::ShaderEntries shader_resources;
+
+        switch (program) {
+        case Maxwell::ShaderProgram::VertexB: {
+            GLShader::MaxwellVSConfig vs_config{setup};
+            shader_resources =
+                shader_program_manager->UseProgrammableVertexShader(vs_config, setup);
+            break;
+        }
+        case Maxwell::ShaderProgram::Fragment: {
+            GLShader::MaxwellFSConfig fs_config{setup};
+            shader_resources =
+                shader_program_manager->UseProgrammableFragmentShader(fs_config, setup);
+            break;
+        }
+        default:
+            NGLOG_CRITICAL(HW_GPU, "Unimplemented shader index={}, enable={}, offset=0x{:08X}",
+                           index, shader_config.enable.Value(), shader_config.offset);
+            UNREACHABLE();
+        }
+
+        GLuint gl_stage_program = shader_program_manager->GetCurrentProgramStage(
+            static_cast<Maxwell::ShaderStage>(stage));
+
+        // Configure the const buffers for this shader stage.
+        current_constbuffer_bindpoint =
+            SetupConstBuffers(static_cast<Maxwell::ShaderStage>(stage), gl_stage_program,
+                              current_constbuffer_bindpoint, shader_resources.const_buffer_entries);
+    }
+
+    shader_program_manager->UseTrivialGeometryShader();
 }
 
-void RasterizerOpenGL::SetupFragmentShader(FSUniformData* ub_ptr, GLintptr buffer_offset) {
-    MICROPROFILE_SCOPE(OpenGL_FS);
-    UNREACHABLE();
+size_t RasterizerOpenGL::CalculateVertexArraysSize() const {
+    const auto& regs = Core::System().GetInstance().GPU().Maxwell3D().regs;
+
+    size_t size = 0;
+    for (u32 index = 0; index < Maxwell::NumVertexArrays; ++index) {
+        if (!regs.vertex_array[index].IsEnabled())
+            continue;
+
+        const Tegra::GPUVAddr start = regs.vertex_array[index].StartAddress();
+        const Tegra::GPUVAddr end = regs.vertex_array_limit[index].LimitAddress();
+
+        ASSERT(end > start);
+        size += end - start + 1;
+    }
+
+    return size;
 }
 
 bool RasterizerOpenGL::AccelerateDrawBatch(bool is_indexed) {
-    if (!has_ARB_separate_shader_objects) {
-        UNREACHABLE();
-        return false;
-    }
-
     accelerate_draw = is_indexed ? AccelDraw::Indexed : AccelDraw::Arrays;
     DrawArrays();
-
     return true;
 }
 
@@ -249,18 +325,18 @@ void RasterizerOpenGL::DrawArrays() {
                               : (depth_surface == nullptr ? 1u : depth_surface->res_scale);
 
     MathUtil::Rectangle<u32> draw_rect{
-        static_cast<u32>(MathUtil::Clamp<s32>(static_cast<s32>(surfaces_rect.left) +
-                                                  viewport_rect.left * res_scale,
-                                              surfaces_rect.left, surfaces_rect.right)), // Left
-        static_cast<u32>(MathUtil::Clamp<s32>(static_cast<s32>(surfaces_rect.bottom) +
-                                                  viewport_rect.top * res_scale,
-                                              surfaces_rect.bottom, surfaces_rect.top)), // Top
-        static_cast<u32>(MathUtil::Clamp<s32>(static_cast<s32>(surfaces_rect.left) +
-                                                  viewport_rect.right * res_scale,
-                                              surfaces_rect.left, surfaces_rect.right)), // Right
-        static_cast<u32>(MathUtil::Clamp<s32>(static_cast<s32>(surfaces_rect.bottom) +
-                                                  viewport_rect.bottom * res_scale,
-                                              surfaces_rect.bottom, surfaces_rect.top))}; // Bottom
+        static_cast<u32>(
+            std::clamp<s32>(static_cast<s32>(surfaces_rect.left) + viewport_rect.left * res_scale,
+                            surfaces_rect.left, surfaces_rect.right)), // Left
+        static_cast<u32>(
+            std::clamp<s32>(static_cast<s32>(surfaces_rect.bottom) + viewport_rect.top * res_scale,
+                            surfaces_rect.bottom, surfaces_rect.top)), // Top
+        static_cast<u32>(
+            std::clamp<s32>(static_cast<s32>(surfaces_rect.left) + viewport_rect.right * res_scale,
+                            surfaces_rect.left, surfaces_rect.right)), // Right
+        static_cast<u32>(std::clamp<s32>(static_cast<s32>(surfaces_rect.bottom) +
+                                             viewport_rect.bottom * res_scale,
+                                         surfaces_rect.bottom, surfaces_rect.top))}; // Bottom
 
     // Bind the framebuffer surfaces
     BindFramebufferSurfaces(color_surface, depth_surface, has_stencil);
@@ -270,19 +346,9 @@ void RasterizerOpenGL::DrawArrays() {
 
     // TODO(bunnei): Sync framebuffer_scale uniform here
     // TODO(bunnei): Sync scissorbox uniform(s) here
-    // TODO(bunnei): Sync and bind the texture surfaces
 
-    // Sync and bind the shader
-    if (shader_dirty) {
-        SetShader();
-        shader_dirty = false;
-    }
-
-    // Sync the uniform data
-    if (uniform_block_data.dirty) {
-        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(UniformData), &uniform_block_data.data);
-        uniform_block_data.dirty = false;
-    }
+    // Sync and bind the texture surfaces
+    BindTextures();
 
     // Viewport can have negative offsets or larger dimensions than our framebuffer sub-rect. Enable
     // scissor test to prevent drawing outside of the framebuffer region
@@ -295,55 +361,68 @@ void RasterizerOpenGL::DrawArrays() {
 
     // Draw the vertex batch
     const bool is_indexed = accelerate_draw == AccelDraw::Indexed;
-    AnalyzeVertexArray(is_indexed);
+    const u64 index_buffer_size{regs.index_array.count * regs.index_array.FormatSizeInBytes()};
+    const unsigned vertex_num{is_indexed ? regs.index_array.count : regs.vertex_buffer.count};
+
     state.draw.vertex_buffer = stream_buffer->GetHandle();
     state.Apply();
 
-    size_t buffer_size = static_cast<size_t>(vs_input_size);
-    if (is_indexed) {
-        UNREACHABLE();
-    }
-    buffer_size += sizeof(VSUniformData);
+    size_t buffer_size = CalculateVertexArraysSize();
 
-    size_t ptr_pos = 0;
+    if (is_indexed) {
+        buffer_size = Common::AlignUp<size_t>(buffer_size, 4) + index_buffer_size;
+    }
+
+    // Uniform space for the 5 shader stages
+    buffer_size = Common::AlignUp<size_t>(buffer_size, 4) +
+                  sizeof(GLShader::MaxwellUniformData) * Maxwell::MaxShaderStage;
+
     u8* buffer_ptr;
     GLintptr buffer_offset;
     std::tie(buffer_ptr, buffer_offset) =
         stream_buffer->Map(static_cast<GLsizeiptr>(buffer_size), 4);
 
-    SetupVertexArray(buffer_ptr, buffer_offset);
-    ptr_pos += vs_input_size;
+    u8* offseted_buffer;
+    std::tie(offseted_buffer, buffer_offset) = SetupVertexArrays(buffer_ptr, buffer_offset);
 
+    offseted_buffer =
+        reinterpret_cast<u8*>(Common::AlignUp(reinterpret_cast<size_t>(offseted_buffer), 4));
+    buffer_offset = Common::AlignUp<size_t>(buffer_offset, 4);
+
+    // If indexed mode, copy the index buffer
     GLintptr index_buffer_offset = 0;
     if (is_indexed) {
-        UNREACHABLE();
+        const auto& memory_manager = Core::System().GetInstance().GPU().memory_manager;
+        const boost::optional<VAddr> index_data_addr{
+            memory_manager->GpuToCpuAddress(regs.index_array.StartAddress())};
+        Memory::ReadBlock(*index_data_addr, offseted_buffer, index_buffer_size);
+
+        index_buffer_offset = buffer_offset;
+        offseted_buffer += index_buffer_size;
+        buffer_offset += index_buffer_size;
     }
 
-    SetupVertexShader(reinterpret_cast<VSUniformData*>(&buffer_ptr[ptr_pos]),
-                      buffer_offset + static_cast<GLintptr>(ptr_pos));
-    const GLintptr vs_ubo_offset = buffer_offset + static_cast<GLintptr>(ptr_pos);
-    ptr_pos += sizeof(VSUniformData);
+    offseted_buffer =
+        reinterpret_cast<u8*>(Common::AlignUp(reinterpret_cast<size_t>(offseted_buffer), 4));
+    buffer_offset = Common::AlignUp<size_t>(buffer_offset, 4);
+
+    SetupShaders(offseted_buffer, buffer_offset);
 
     stream_buffer->Unmap();
 
-    const auto copy_buffer = [&](GLuint handle, GLintptr offset, GLsizeiptr size) {
-        if (has_ARB_direct_state_access) {
-            glCopyNamedBufferSubData(stream_buffer->GetHandle(), handle, offset, 0, size);
-        } else {
-            glBindBuffer(GL_COPY_WRITE_BUFFER, handle);
-            glCopyBufferSubData(GL_ARRAY_BUFFER, GL_COPY_WRITE_BUFFER, offset, 0, size);
-        }
-    };
+    shader_program_manager->ApplyTo(state);
+    state.Apply();
 
-    copy_buffer(vs_uniform_buffer.handle, vs_ubo_offset, sizeof(VSUniformData));
-
-    glUseProgramStages(pipeline.handle, GL_FRAGMENT_SHADER_BIT, current_shader->shader.handle);
-
+    const GLenum primitive_mode{MaxwellToGL::PrimitiveTopology(regs.draw.topology)};
     if (is_indexed) {
-        UNREACHABLE();
+        const GLint index_min{static_cast<GLint>(regs.index_array.first)};
+        const GLint index_max{static_cast<GLint>(regs.index_array.first + regs.index_array.count)};
+        glDrawRangeElementsBaseVertex(primitive_mode, index_min, index_max, regs.index_array.count,
+                                      MaxwellToGL::IndexFormat(regs.index_array.format),
+                                      reinterpret_cast<const void*>(index_buffer_offset),
+                                      -index_min);
     } else {
-        glDrawArrays(MaxwellToGL::PrimitiveTopology(regs.draw.topology), 0,
-                     regs.vertex_buffer.count);
+        glDrawArrays(primitive_mode, 0, regs.vertex_buffer.count);
     }
 
     // Disable scissor test
@@ -374,24 +453,82 @@ void RasterizerOpenGL::DrawArrays() {
     }
 }
 
-void RasterizerOpenGL::NotifyMaxwellRegisterChanged(u32 id) {}
+void RasterizerOpenGL::BindTextures() {
+    using Regs = Tegra::Engines::Maxwell3D::Regs;
+    auto& maxwell3d = Core::System::GetInstance().GPU().Get3DEngine();
+
+    // Each Maxwell shader stage can have an arbitrary number of textures, but we're limited to a
+    // certain number in OpenGL. We try to only use the minimum amount of host textures by not
+    // keeping a 1:1 relation between guest texture ids and host texture ids, ie, guest texture id 8
+    // can be host texture id 0 if it's the only texture used in the guest shader program.
+    u32 host_texture_index = 0;
+    for (u32 stage = 0; stage < Regs::MaxShaderStage; ++stage) {
+        ASSERT(host_texture_index < texture_samplers.size());
+        const auto textures = maxwell3d.GetStageTextures(static_cast<Regs::ShaderStage>(stage));
+        for (unsigned texture_index = 0; texture_index < textures.size(); ++texture_index) {
+            const auto& texture = textures[texture_index];
+
+            if (texture.enabled) {
+                texture_samplers[host_texture_index].SyncWithConfig(texture.tsc);
+                Surface surface = res_cache.GetTextureSurface(texture);
+                if (surface != nullptr) {
+                    state.texture_units[host_texture_index].texture_2d = surface->texture.handle;
+                } else {
+                    // Can occur when texture addr is null or its memory is unmapped/invalid
+                    state.texture_units[texture_index].texture_2d = 0;
+                }
+
+                ++host_texture_index;
+            } else {
+                state.texture_units[texture_index].texture_2d = 0;
+            }
+        }
+    }
+}
+
+void RasterizerOpenGL::NotifyMaxwellRegisterChanged(u32 method) {
+    const auto& regs = Core::System().GetInstance().GPU().Maxwell3D().regs;
+    switch (method) {
+    case MAXWELL3D_REG_INDEX(blend.separate_alpha):
+        ASSERT_MSG(false, "unimplemented");
+        break;
+    case MAXWELL3D_REG_INDEX(blend.equation_rgb):
+        state.blend.rgb_equation = MaxwellToGL::BlendEquation(regs.blend.equation_rgb);
+        break;
+    case MAXWELL3D_REG_INDEX(blend.factor_source_rgb):
+        state.blend.src_rgb_func = MaxwellToGL::BlendFunc(regs.blend.factor_source_rgb);
+        break;
+    case MAXWELL3D_REG_INDEX(blend.factor_dest_rgb):
+        state.blend.dst_rgb_func = MaxwellToGL::BlendFunc(regs.blend.factor_dest_rgb);
+        break;
+    case MAXWELL3D_REG_INDEX(blend.equation_a):
+        state.blend.a_equation = MaxwellToGL::BlendEquation(regs.blend.equation_a);
+        break;
+    case MAXWELL3D_REG_INDEX(blend.factor_source_a):
+        state.blend.src_a_func = MaxwellToGL::BlendFunc(regs.blend.factor_source_a);
+        break;
+    case MAXWELL3D_REG_INDEX(blend.factor_dest_a):
+        state.blend.dst_a_func = MaxwellToGL::BlendFunc(regs.blend.factor_dest_a);
+        break;
+    }
+}
 
 void RasterizerOpenGL::FlushAll() {
     MICROPROFILE_SCOPE(OpenGL_CacheManagement);
     res_cache.FlushAll();
 }
 
-void RasterizerOpenGL::FlushRegion(VAddr addr, u64 size) {
+void RasterizerOpenGL::FlushRegion(Tegra::GPUVAddr addr, u64 size) {
     MICROPROFILE_SCOPE(OpenGL_CacheManagement);
     res_cache.FlushRegion(addr, size);
 }
 
-void RasterizerOpenGL::InvalidateRegion(VAddr addr, u64 size) {
+void RasterizerOpenGL::InvalidateRegion(Tegra::GPUVAddr addr, u64 size) {
     MICROPROFILE_SCOPE(OpenGL_CacheManagement);
     res_cache.InvalidateRegion(addr, size, nullptr);
 }
 
-void RasterizerOpenGL::FlushAndInvalidateRegion(VAddr addr, u64 size) {
+void RasterizerOpenGL::FlushAndInvalidateRegion(Tegra::GPUVAddr addr, u64 size) {
     MICROPROFILE_SCOPE(OpenGL_CacheManagement);
     res_cache.FlushRegion(addr, size);
     res_cache.InvalidateRegion(addr, size, nullptr);
@@ -422,13 +559,17 @@ bool RasterizerOpenGL::AccelerateDisplay(const Tegra::FramebufferConfig& framebu
     MICROPROFILE_SCOPE(OpenGL_CacheManagement);
 
     SurfaceParams src_params;
-    src_params.addr = framebuffer_addr;
+    src_params.cpu_addr = framebuffer_addr;
+    src_params.addr = res_cache.TryFindFramebufferGpuAddress(framebuffer_addr).get_value_or(0);
     src_params.width = std::min(framebuffer.width, pixel_stride);
     src_params.height = framebuffer.height;
     src_params.stride = pixel_stride;
-    src_params.is_tiled = false;
+    src_params.is_tiled = true;
+    src_params.block_height = Tegra::Texture::TICEntry::DefaultBlockHeight;
     src_params.pixel_format =
         SurfaceParams::PixelFormatFromGPUPixelFormat(framebuffer.pixel_format);
+    src_params.component_type =
+        SurfaceParams::ComponentTypeFromGPUPixelFormat(framebuffer.pixel_format);
     src_params.UpdateParams();
 
     MathUtil::Rectangle<u32> src_rect;
@@ -452,61 +593,91 @@ bool RasterizerOpenGL::AccelerateDisplay(const Tegra::FramebufferConfig& framebu
     return true;
 }
 
-void RasterizerOpenGL::SetShader() {
-    // TODO(bunnei): The below sets up a static test shader for passing untransformed vertices to
-    // OpenGL for rendering. This should be removed/replaced when we start emulating Maxwell
-    // shaders.
+void RasterizerOpenGL::SamplerInfo::Create() {
+    sampler.Create();
+    mag_filter = min_filter = Tegra::Texture::TextureFilter::Linear;
+    wrap_u = wrap_v = Tegra::Texture::WrapMode::Wrap;
+    border_color_r = border_color_g = border_color_b = border_color_a = 0;
 
-    static constexpr char vertex_shader[] = R"(
-#version 150 core
-
-in vec2 vert_position;
-in vec2 vert_tex_coord;
-out vec2 frag_tex_coord;
-
-void main() {
-    // Multiply input position by the rotscale part of the matrix and then manually translate by
-    // the last column. This is equivalent to using a full 3x3 matrix and expanding the vector
-    // to `vec3(vert_position.xy, 1.0)`
-    gl_Position = vec4(mat2(mat3x2(0.0015625f, 0.0, 0.0, -0.0027778, -1.0, 1.0)) * vert_position + mat3x2(0.0015625f, 0.0, 0.0, -0.0027778, -1.0, 1.0)[2], 0.0, 1.0);
-    frag_tex_coord = vert_tex_coord;
+    // default is GL_LINEAR_MIPMAP_LINEAR
+    glSamplerParameteri(sampler.handle, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    // Other attributes have correct defaults
 }
-)";
 
-    static constexpr char fragment_shader[] = R"(
-#version 150 core
+void RasterizerOpenGL::SamplerInfo::SyncWithConfig(const Tegra::Texture::TSCEntry& config) {
+    GLuint s = sampler.handle;
 
-in vec2 frag_tex_coord;
-out vec4 color;
-
-uniform sampler2D color_texture;
-
-void main() {
-    color = vec4(1.0, 0.0, 1.0, 0.0);
-}
-)";
-
-    if (current_shader) {
-        return;
+    if (mag_filter != config.mag_filter) {
+        mag_filter = config.mag_filter;
+        glSamplerParameteri(s, GL_TEXTURE_MAG_FILTER, MaxwellToGL::TextureFilterMode(mag_filter));
+    }
+    if (min_filter != config.min_filter) {
+        min_filter = config.min_filter;
+        glSamplerParameteri(s, GL_TEXTURE_MIN_FILTER, MaxwellToGL::TextureFilterMode(min_filter));
     }
 
-    LOG_CRITICAL(Render_OpenGL, "Emulated shaders are not supported! Using a passthrough shader.");
-
-    current_shader = &test_shader;
-    if (has_ARB_separate_shader_objects) {
-        test_shader.shader.Create(vertex_shader, nullptr, fragment_shader, {}, true);
-        glActiveShaderProgram(pipeline.handle, test_shader.shader.handle);
-    } else {
-        UNREACHABLE();
+    if (wrap_u != config.wrap_u) {
+        wrap_u = config.wrap_u;
+        glSamplerParameteri(s, GL_TEXTURE_WRAP_S, MaxwellToGL::WrapMode(wrap_u));
+    }
+    if (wrap_v != config.wrap_v) {
+        wrap_v = config.wrap_v;
+        glSamplerParameteri(s, GL_TEXTURE_WRAP_T, MaxwellToGL::WrapMode(wrap_v));
     }
 
-    state.draw.shader_program = test_shader.shader.handle;
+    if (wrap_u == Tegra::Texture::WrapMode::Border || wrap_v == Tegra::Texture::WrapMode::Border) {
+        // TODO(Subv): Implement border color
+        ASSERT(false);
+    }
+}
+
+u32 RasterizerOpenGL::SetupConstBuffers(Maxwell::ShaderStage stage, GLuint program,
+                                        u32 current_bindpoint,
+                                        const std::vector<GLShader::ConstBufferEntry>& entries) {
+    auto& gpu = Core::System::GetInstance().GPU();
+    auto& maxwell3d = gpu.Get3DEngine();
+
+    ASSERT_MSG(maxwell3d.IsShaderStageEnabled(stage),
+               "Attempted to upload constbuffer of disabled shader stage");
+
+    // Reset all buffer draw state for this stage.
+    for (auto& buffer : state.draw.const_buffers[static_cast<size_t>(stage)]) {
+        buffer.bindpoint = 0;
+        buffer.enabled = false;
+    }
+
+    // Upload only the enabled buffers from the 16 constbuffers of each shader stage
+    auto& shader_stage = maxwell3d.state.shader_stages[static_cast<size_t>(stage)];
+
+    for (u32 bindpoint = 0; bindpoint < entries.size(); ++bindpoint) {
+        const auto& used_buffer = entries[bindpoint];
+        const auto& buffer = shader_stage.const_buffers[used_buffer.GetIndex()];
+        auto& buffer_draw_state =
+            state.draw.const_buffers[static_cast<size_t>(stage)][used_buffer.GetIndex()];
+
+        ASSERT_MSG(buffer.enabled, "Attempted to upload disabled constbuffer");
+        buffer_draw_state.enabled = true;
+        buffer_draw_state.bindpoint = current_bindpoint + bindpoint;
+
+        boost::optional<VAddr> addr = gpu.memory_manager->GpuToCpuAddress(buffer.address);
+        std::vector<u8> data(used_buffer.GetSize() * sizeof(float));
+        Memory::ReadBlock(*addr, data.data(), data.size());
+
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffer_draw_state.ssbo);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, data.size(), data.data(), GL_DYNAMIC_DRAW);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+        // Now configure the bindpoint of the buffer inside the shader
+        std::string buffer_name = used_buffer.GetName();
+        GLuint index =
+            glGetProgramResourceIndex(program, GL_SHADER_STORAGE_BLOCK, buffer_name.c_str());
+        if (index != -1)
+            glShaderStorageBlockBinding(program, index, buffer_draw_state.bindpoint);
+    }
+
     state.Apply();
 
-    if (has_ARB_separate_shader_objects) {
-        state.draw.shader_program = 0;
-        state.Apply();
-    }
+    return current_bindpoint + entries.size();
 }
 
 void RasterizerOpenGL::BindFramebufferSurfaces(const Surface& color_surface,

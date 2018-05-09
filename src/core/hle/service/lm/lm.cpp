@@ -9,8 +9,7 @@
 #include "core/hle/kernel/client_session.h"
 #include "core/hle/service/lm/lm.h"
 
-namespace Service {
-namespace LM {
+namespace Service::LM {
 
 class Logger final : public ServiceFramework<Logger> {
 public:
@@ -142,19 +141,19 @@ private:
         if (header.IsTailLog()) {
             switch (header.severity) {
             case MessageHeader::Severity::Trace:
-                LOG_TRACE(Debug_Emulated, "%s", log_stream.str().c_str());
+                NGLOG_TRACE(Debug_Emulated, "{}", log_stream.str());
                 break;
             case MessageHeader::Severity::Info:
-                LOG_INFO(Debug_Emulated, "%s", log_stream.str().c_str());
+                NGLOG_INFO(Debug_Emulated, "{}", log_stream.str());
                 break;
             case MessageHeader::Severity::Warning:
-                LOG_WARNING(Debug_Emulated, "%s", log_stream.str().c_str());
+                NGLOG_WARNING(Debug_Emulated, "{}", log_stream.str());
                 break;
             case MessageHeader::Severity::Error:
-                LOG_ERROR(Debug_Emulated, "%s", log_stream.str().c_str());
+                NGLOG_ERROR(Debug_Emulated, "{}", log_stream.str());
                 break;
             case MessageHeader::Severity::Critical:
-                LOG_CRITICAL(Debug_Emulated, "%s", log_stream.str().c_str());
+                NGLOG_CRITICAL(Debug_Emulated, "{}", log_stream.str());
                 break;
             }
         }
@@ -179,7 +178,7 @@ void LM::Initialize(Kernel::HLERequestContext& ctx) {
     rb.Push(RESULT_SUCCESS);
     rb.PushIpcInterface<Logger>();
 
-    LOG_DEBUG(Service_LM, "called");
+    NGLOG_DEBUG(Service_LM, "called");
 }
 
 LM::LM() : ServiceFramework("lm") {
@@ -189,5 +188,4 @@ LM::LM() : ServiceFramework("lm") {
     RegisterHandlers(functions);
 }
 
-} // namespace LM
-} // namespace Service
+} // namespace Service::LM

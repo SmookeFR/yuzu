@@ -10,8 +10,7 @@
 #include "core/hle/kernel/hle_ipc.h"
 #include "core/hle/service/audio/audout_u.h"
 
-namespace Service {
-namespace Audio {
+namespace Service::Audio {
 
 /// Switch sample rate frequency
 constexpr u32 sample_rate{48000};
@@ -19,21 +18,24 @@ constexpr u32 sample_rate{48000};
 /// to more audio channels (probably when Docked I guess)
 constexpr u32 audio_channels{2};
 /// TODO(st4rk): find a proper value for the audio_ticks
-constexpr u64 audio_ticks{static_cast<u64>(BASE_CLOCK_RATE / 500)};
+constexpr u64 audio_ticks{static_cast<u64>(CoreTiming::BASE_CLOCK_RATE / 500)};
 
 class IAudioOut final : public ServiceFramework<IAudioOut> {
 public:
     IAudioOut() : ServiceFramework("IAudioOut"), audio_out_state(AudioState::Stopped) {
         static const FunctionInfo functions[] = {
-            {0x0, &IAudioOut::GetAudioOutState, "GetAudioOutState"},
-            {0x1, &IAudioOut::StartAudioOut, "StartAudioOut"},
-            {0x2, &IAudioOut::StopAudioOut, "StopAudioOut"},
-            {0x3, &IAudioOut::AppendAudioOutBuffer_1, "AppendAudioOutBuffer_1"},
-            {0x4, &IAudioOut::RegisterBufferEvent, "RegisterBufferEvent"},
-            {0x5, &IAudioOut::GetReleasedAudioOutBuffer_1, "GetReleasedAudioOutBuffer_1"},
-            {0x6, nullptr, "ContainsAudioOutBuffer"},
-            {0x7, nullptr, "AppendAudioOutBuffer_2"},
-            {0x8, nullptr, "GetReleasedAudioOutBuffer_2"},
+            {0, &IAudioOut::GetAudioOutState, "GetAudioOutState"},
+            {1, &IAudioOut::StartAudioOut, "StartAudioOut"},
+            {2, &IAudioOut::StopAudioOut, "StopAudioOut"},
+            {3, &IAudioOut::AppendAudioOutBuffer, "AppendAudioOutBuffer"},
+            {4, &IAudioOut::RegisterBufferEvent, "RegisterBufferEvent"},
+            {5, &IAudioOut::GetReleasedAudioOutBuffer, "GetReleasedAudioOutBuffer"},
+            {6, nullptr, "ContainsAudioOutBuffer"},
+            {7, nullptr, "AppendAudioOutBufferAuto"},
+            {8, nullptr, "GetReleasedAudioOutBufferAuto"},
+            {9, nullptr, "GetAudioOutBufferCount"},
+            {10, nullptr, "GetAudioOutPlayedSampleCount"},
+            {11, nullptr, "FlushAudioOutBuffers"},
         };
         RegisterHandlers(functions);
 
@@ -58,14 +60,14 @@ public:
 
 private:
     void GetAudioOutState(Kernel::HLERequestContext& ctx) {
-        LOG_DEBUG(Service_Audio, "called");
+        NGLOG_DEBUG(Service_Audio, "called");
         IPC::ResponseBuilder rb{ctx, 3};
         rb.Push(RESULT_SUCCESS);
         rb.Push(static_cast<u32>(audio_out_state));
     }
 
     void StartAudioOut(Kernel::HLERequestContext& ctx) {
-        LOG_WARNING(Service_Audio, "(STUBBED) called");
+        NGLOG_WARNING(Service_Audio, "(STUBBED) called");
 
         // Start audio
         audio_out_state = AudioState::Started;
@@ -75,7 +77,7 @@ private:
     }
 
     void StopAudioOut(Kernel::HLERequestContext& ctx) {
-        LOG_WARNING(Service_Audio, "(STUBBED) called");
+        NGLOG_WARNING(Service_Audio, "(STUBBED) called");
 
         // Stop audio
         audio_out_state = AudioState::Stopped;
@@ -87,15 +89,15 @@ private:
     }
 
     void RegisterBufferEvent(Kernel::HLERequestContext& ctx) {
-        LOG_WARNING(Service_Audio, "(STUBBED) called");
+        NGLOG_WARNING(Service_Audio, "(STUBBED) called");
 
         IPC::ResponseBuilder rb{ctx, 2, 1};
         rb.Push(RESULT_SUCCESS);
         rb.PushCopyObjects(buffer_event);
     }
 
-    void AppendAudioOutBuffer_1(Kernel::HLERequestContext& ctx) {
-        LOG_WARNING(Service_Audio, "(STUBBED) called");
+    void AppendAudioOutBuffer(Kernel::HLERequestContext& ctx) {
+        NGLOG_WARNING(Service_Audio, "(STUBBED) called");
         IPC::RequestParser rp{ctx};
 
         const u64 key{rp.Pop<u64>()};
@@ -105,8 +107,8 @@ private:
         rb.Push(RESULT_SUCCESS);
     }
 
-    void GetReleasedAudioOutBuffer_1(Kernel::HLERequestContext& ctx) {
-        LOG_WARNING(Service_Audio, "(STUBBED) called");
+    void GetReleasedAudioOutBuffer(Kernel::HLERequestContext& ctx) {
+        NGLOG_WARNING(Service_Audio, "(STUBBED) called");
 
         // TODO(st4rk): This is how libtransistor currently implements the
         // GetReleasedAudioOutBuffer, it should return the key (a VAddr) to the app and this address
@@ -162,7 +164,7 @@ private:
 };
 
 void AudOutU::ListAudioOuts(Kernel::HLERequestContext& ctx) {
-    LOG_WARNING(Service_Audio, "(STUBBED) called");
+    NGLOG_WARNING(Service_Audio, "(STUBBED) called");
     IPC::RequestParser rp{ctx};
 
     const std::string audio_interface = "AudioInterface";
@@ -178,7 +180,7 @@ void AudOutU::ListAudioOuts(Kernel::HLERequestContext& ctx) {
 }
 
 void AudOutU::OpenAudioOut(Kernel::HLERequestContext& ctx) {
-    LOG_WARNING(Service_Audio, "(STUBBED) called");
+    NGLOG_WARNING(Service_Audio, "(STUBBED) called");
 
     if (!audio_out_interface) {
         audio_out_interface = std::make_shared<IAudioOut>();
@@ -196,10 +198,9 @@ void AudOutU::OpenAudioOut(Kernel::HLERequestContext& ctx) {
 AudOutU::AudOutU() : ServiceFramework("audout:u") {
     static const FunctionInfo functions[] = {{0x00000000, &AudOutU::ListAudioOuts, "ListAudioOuts"},
                                              {0x00000001, &AudOutU::OpenAudioOut, "OpenAudioOut"},
-                                             {0x00000002, nullptr, "Unknown2"},
-                                             {0x00000003, nullptr, "Unknown3"}};
+                                             {0x00000002, nullptr, "ListAudioOutsAuto"},
+                                             {0x00000003, nullptr, "OpenAudioOutAuto"}};
     RegisterHandlers(functions);
 }
 
-} // namespace Audio
-} // namespace Service
+} // namespace Service::Audio

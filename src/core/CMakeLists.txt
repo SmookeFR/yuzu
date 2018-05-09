@@ -12,6 +12,8 @@ add_library(core STATIC
     file_sys/errors.h
     file_sys/filesystem.cpp
     file_sys/filesystem.h
+    file_sys/partition_filesystem.cpp
+    file_sys/partition_filesystem.h
     file_sys/path_parser.cpp
     file_sys/path_parser.h
     file_sys/program_metadata.cpp
@@ -40,8 +42,6 @@ add_library(core STATIC
     hle/kernel/client_port.h
     hle/kernel/client_session.cpp
     hle/kernel/client_session.h
-    hle/kernel/condition_variable.cpp
-    hle/kernel/condition_variable.h
     hle/kernel/errors.h
     hle/kernel/event.cpp
     hle/kernel/event.h
@@ -88,8 +88,14 @@ add_library(core STATIC
     hle/romfs.h
     hle/service/acc/acc.cpp
     hle/service/acc/acc.h
+    hle/service/acc/acc_aa.cpp
+    hle/service/acc/acc_aa.h
+    hle/service/acc/acc_su.cpp
+    hle/service/acc/acc_su.h
     hle/service/acc/acc_u0.cpp
     hle/service/acc/acc_u0.h
+    hle/service/acc/acc_u1.cpp
+    hle/service/acc/acc_u1.h
     hle/service/am/am.cpp
     hle/service/am/am.h
     hle/service/am/applet_ae.cpp
@@ -175,10 +181,12 @@ add_library(core STATIC
     hle/service/nvflinger/buffer_queue.h
     hle/service/nvflinger/nvflinger.cpp
     hle/service/nvflinger/nvflinger.h
+    hle/service/pctl/module.cpp
+    hle/service/pctl/module.h
     hle/service/pctl/pctl.cpp
     hle/service/pctl/pctl.h
-    hle/service/pctl/pctl_a.cpp
-    hle/service/pctl/pctl_a.h
+    hle/service/prepo/prepo.cpp
+    hle/service/prepo/prepo.h
     hle/service/service.cpp
     hle/service/service.h
     hle/service/set/set.cpp
@@ -245,6 +253,7 @@ add_library(core STATIC
     loader/nso.h
     memory.cpp
     memory.h
+    memory_hook.cpp
     memory_hook.h
     memory_setup.h
     perf_stats.cpp

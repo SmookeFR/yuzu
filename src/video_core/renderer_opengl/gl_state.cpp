@@ -2,8 +2,8 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
+#include <iterator>
 #include <glad/glad.h>
-#include "common/common_funcs.h"
 #include "common/logging/log.h"
 #include "video_core/renderer_opengl/gl_state.h"
 
@@ -192,13 +192,27 @@ void OpenGLState::Apply() const {
     }
 
     // Textures
-    for (unsigned i = 0; i < ARRAY_SIZE(texture_units); ++i) {
+    for (size_t i = 0; i < std::size(texture_units); ++i) {
         if (texture_units[i].texture_2d != cur_state.texture_units[i].texture_2d) {
-            glActiveTexture(TextureUnits::PicaTexture(i).Enum());
+            glActiveTexture(TextureUnits::MaxwellTexture(i).Enum());
             glBindTexture(GL_TEXTURE_2D, texture_units[i].texture_2d);
         }
         if (texture_units[i].sampler != cur_state.texture_units[i].sampler) {
             glBindSampler(i, texture_units[i].sampler);
+        }
+    }
+
+    // Constbuffers
+    for (u32 stage = 0; stage < draw.const_buffers.size(); ++stage) {
+        for (u32 buffer_id = 0; buffer_id < draw.const_buffers[stage].size(); ++buffer_id) {
+            auto& current = cur_state.draw.const_buffers[stage][buffer_id];
+            auto& new_state = draw.const_buffers[stage][buffer_id];
+            if (current.enabled != new_state.enabled || current.bindpoint != new_state.bindpoint ||
+                current.ssbo != new_state.ssbo) {
+                if (new_state.enabled) {
+                    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, new_state.bindpoint, new_state.ssbo);
+                }
+            }
         }
     }
 

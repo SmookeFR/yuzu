@@ -8,8 +8,7 @@
 #include "core/hle/kernel/shared_memory.h"
 #include "core/hle/service/service.h"
 
-namespace Service {
-namespace NS {
+namespace Service::NS {
 
 class PL_U final : public ServiceFramework<PL_U> {
 public:
@@ -22,6 +21,7 @@ private:
     void GetSize(Kernel::HLERequestContext& ctx);
     void GetSharedMemoryAddressOffset(Kernel::HLERequestContext& ctx);
     void GetSharedMemoryNativeHandle(Kernel::HLERequestContext& ctx);
+    void GetSharedFontInOrderOfPriority(Kernel::HLERequestContext& ctx);
 
     /// Handle to shared memory region designated for a shared font
     Kernel::SharedPtr<Kernel::SharedMemory> shared_font_mem;
@@ -30,5 +30,4 @@ private:
     std::shared_ptr<std::vector<u8>> shared_font;
 };
 
-} // namespace NS
-} // namespace Service
+} // namespace Service::NS

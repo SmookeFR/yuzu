@@ -4,8 +4,7 @@
 
 #include "core/hle/service/spl/spl.h"
 
-namespace Service {
-namespace SPL {
+namespace Service::SPL {
 
 SPL::SPL(std::shared_ptr<Module> module) : Module::Interface(std::move(module), "spl:") {
     static const FunctionInfo functions[] = {
@@ -33,9 +32,14 @@ SPL::SPL(std::shared_ptr<Module> module) : Module::Interface(std::move(module), 
         {23, nullptr, "GetSplWaitEvent"},
         {24, nullptr, "SetSharedData"},
         {25, nullptr, "GetSharedData"},
+        {26, nullptr, "ImportSslRsaKey"},
+        {27, nullptr, "SecureExpModWithSslKey"},
+        {28, nullptr, "ImportEsRsaKey"},
+        {29, nullptr, "SecureExpModWithEsKey"},
+        {30, nullptr, "EncryptManuRsaKeyForImport"},
+        {31, nullptr, "GetPackage2Hash"},
     };
     RegisterHandlers(functions);
 }
 
-} // namespace SPL
-} // namespace Service
+} // namespace Service::SPL

@@ -6,8 +6,7 @@
 
 #include "core/hle/service/service.h"
 
-namespace Service {
-namespace NFP {
+namespace Service::NFP {
 
 class Module final {
 public:
@@ -15,7 +14,7 @@ public:
     public:
         Interface(std::shared_ptr<Module> module, const char* name);
 
-        void Unknown(Kernel::HLERequestContext& ctx);
+        void CreateUserInterface(Kernel::HLERequestContext& ctx);
 
     protected:
         std::shared_ptr<Module> module;
@@ -24,5 +23,4 @@ public:
 
 void InstallInterfaces(SM::ServiceManager& service_manager);
 
-} // namespace NFP
-} // namespace Service
+} // namespace Service::NFP

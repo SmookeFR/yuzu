@@ -6,6 +6,7 @@
 
 #include "common/common_types.h"
 #include "video_core/gpu.h"
+#include "video_core/memory_manager.h"
 
 struct ScreenInfo;
 
@@ -19,20 +20,20 @@ public:
     virtual void DrawArrays() = 0;
 
     /// Notify rasterizer that the specified Maxwell register has been changed
-    virtual void NotifyMaxwellRegisterChanged(u32 id) = 0;
+    virtual void NotifyMaxwellRegisterChanged(u32 method) = 0;
 
     /// Notify rasterizer that all caches should be flushed to Switch memory
     virtual void FlushAll() = 0;
 
     /// Notify rasterizer that any caches of the specified region should be flushed to Switch memory
-    virtual void FlushRegion(VAddr addr, u64 size) = 0;
+    virtual void FlushRegion(Tegra::GPUVAddr addr, u64 size) = 0;
 
     /// Notify rasterizer that any caches of the specified region should be invalidated
-    virtual void InvalidateRegion(VAddr addr, u64 size) = 0;
+    virtual void InvalidateRegion(Tegra::GPUVAddr addr, u64 size) = 0;
 
     /// Notify rasterizer that any caches of the specified region should be flushed to Switch memory
     /// and invalidated
-    virtual void FlushAndInvalidateRegion(VAddr addr, u64 size) = 0;
+    virtual void FlushAndInvalidateRegion(Tegra::GPUVAddr addr, u64 size) = 0;
 
     /// Attempt to use a faster method to perform a display transfer with is_texture_copy = 0
     virtual bool AccelerateDisplayTransfer(const void* config) {

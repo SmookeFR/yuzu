@@ -10,8 +10,7 @@
 #include "core/hle/service/filesystem/filesystem.h"
 #include "core/hle/service/filesystem/fsp_srv.h"
 
-namespace Service {
-namespace FileSystem {
+namespace Service::FileSystem {
 
 /**
  * Map of registered file systems, identified by type. Once an file system is registered here, it
@@ -26,14 +25,14 @@ ResultCode RegisterFileSystem(std::unique_ptr<FileSys::FileSystemFactory>&& fact
     ASSERT_MSG(inserted, "Tried to register more than one system with same id code");
 
     auto& filesystem = result.first->second;
-    LOG_DEBUG(Service_FS, "Registered file system %s with id code 0x%08X",
-              filesystem->GetName().c_str(), static_cast<u32>(type));
+    NGLOG_DEBUG(Service_FS, "Registered file system {} with id code 0x{:08X}",
+                filesystem->GetName(), static_cast<u32>(type));
     return RESULT_SUCCESS;
 }
 
 ResultVal<std::unique_ptr<FileSys::FileSystemBackend>> OpenFileSystem(Type type,
                                                                       FileSys::Path& path) {
-    LOG_TRACE(Service_FS, "Opening FileSystem with type=%d", type);
+    NGLOG_TRACE(Service_FS, "Opening FileSystem with type={}", static_cast<u32>(type));
 
     auto itr = filesystem_map.find(type);
     if (itr == filesystem_map.end()) {
@@ -45,7 +44,7 @@ ResultVal<std::unique_ptr<FileSys::FileSystemBackend>> OpenFileSystem(Type type,
 }
 
 ResultCode FormatFileSystem(Type type) {
-    LOG_TRACE(Service_FS, "Formatting FileSystem with type=%d", type);
+    NGLOG_TRACE(Service_FS, "Formatting FileSystem with type={}", static_cast<u32>(type));
 
     auto itr = filesystem_map.find(type);
     if (itr == filesystem_map.end()) {
@@ -75,5 +74,4 @@ void InstallInterfaces(SM::ServiceManager& service_manager) {
     std::make_shared<FSP_SRV>()->InstallAsService(service_manager);
 }
 
-} // namespace FileSystem
-} // namespace Service
+} // namespace Service::FileSystem

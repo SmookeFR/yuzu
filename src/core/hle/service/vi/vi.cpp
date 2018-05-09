@@ -21,8 +21,7 @@
 #include "video_core/renderer_base.h"
 #include "video_core/video_core.h"
 
-namespace Service {
-namespace VI {
+namespace Service::VI {
 
 struct DisplayInfo {
     char display_name[0x40]{"Default"};
@@ -150,7 +149,7 @@ private:
 
 class NativeWindow : public Parcel {
 public:
-    explicit NativeWindow(u32 id) : Parcel() {
+    explicit NativeWindow(u32 id) {
         data.id = id;
     }
     ~NativeWindow() override = default;
@@ -197,7 +196,7 @@ public:
 
 class IGBPConnectResponseParcel : public Parcel {
 public:
-    explicit IGBPConnectResponseParcel(u32 width, u32 height) : Parcel() {
+    explicit IGBPConnectResponseParcel(u32 width, u32 height) {
         data.width = width;
         data.height = height;
     }
@@ -247,10 +246,6 @@ public:
 };
 
 class IGBPSetPreallocatedBufferResponseParcel : public Parcel {
-public:
-    IGBPSetPreallocatedBufferResponseParcel() : Parcel() {}
-    ~IGBPSetPreallocatedBufferResponseParcel() override = default;
-
 protected:
     void SerializeData() override {
         // TODO(Subv): Find out what this means
@@ -289,7 +284,7 @@ static_assert(sizeof(BufferProducerFence) == 36, "BufferProducerFence has wrong 
 
 class IGBPDequeueBufferResponseParcel : public Parcel {
 public:
-    explicit IGBPDequeueBufferResponseParcel(u32 slot) : Parcel(), slot(slot) {}
+    explicit IGBPDequeueBufferResponseParcel(u32 slot) : slot(slot) {}
     ~IGBPDequeueBufferResponseParcel() override = default;
 
 protected:
@@ -383,7 +378,7 @@ public:
 
 class IGBPQueueBufferResponseParcel : public Parcel {
 public:
-    explicit IGBPQueueBufferResponseParcel(u32 width, u32 height) : Parcel() {
+    explicit IGBPQueueBufferResponseParcel(u32 width, u32 height) {
         data.width = width;
         data.height = height;
     }
@@ -424,7 +419,7 @@ public:
 
 class IGBPQueryResponseParcel : public Parcel {
 public:
-    explicit IGBPQueryResponseParcel(u32 value) : Parcel(), value(value) {}
+    explicit IGBPQueryResponseParcel(u32 value) : value(value) {}
     ~IGBPQueryResponseParcel() override = default;
 
 protected:
@@ -475,7 +470,7 @@ private:
         u32 flags = rp.Pop<u32>();
         auto buffer_queue = nv_flinger->GetBufferQueue(id);
 
-        LOG_DEBUG(Service_VI, "called, transaction=%x", static_cast<u32>(transaction));
+        NGLOG_DEBUG(Service_VI, "called, transaction={:X}", static_cast<u32>(transaction));
 
         if (transaction == TransactionId::Connect) {
             IGBPConnectRequestParcel request{ctx.ReadBuffer()};
@@ -537,7 +532,7 @@ private:
             IGBPQueryResponseParcel response{value};
             ctx.WriteBuffer(response.Serialize());
         } else if (transaction == TransactionId::CancelBuffer) {
-            LOG_WARNING(Service_VI, "(STUBBED) called, transaction=CancelBuffer");
+            NGLOG_WARNING(Service_VI, "(STUBBED) called, transaction=CancelBuffer");
         } else {
             ASSERT_MSG(false, "Unimplemented");
         }
@@ -552,7 +547,8 @@ private:
         s32 addval = rp.PopRaw<s32>();
         u32 type = rp.Pop<u32>();
 
-        LOG_WARNING(Service_VI, "(STUBBED) called id=%u, addval=%08X, type=%08X", id, addval, type);
+        NGLOG_WARNING(Service_VI, "(STUBBED) called id={}, addval={:08X}, type={:08X}", id, addval,
+                      type);
         IPC::ResponseBuilder rb{ctx, 2};
         rb.Push(RESULT_SUCCESS);
     }
@@ -566,7 +562,7 @@ private:
 
         // TODO(Subv): Find out what this actually is.
 
-        LOG_WARNING(Service_VI, "(STUBBED) called id=%u, unknown=%08X", id, unknown);
+        NGLOG_WARNING(Service_VI, "(STUBBED) called id={}, unknown={:08X}", id, unknown);
         IPC::ResponseBuilder rb{ctx, 2, 1};
         rb.Push(RESULT_SUCCESS);
         rb.PushCopyObjects(buffer_queue->GetNativeHandle());
@@ -580,7 +576,48 @@ public:
     ISystemDisplayService() : ServiceFramework("ISystemDisplayService") {
         static const FunctionInfo functions[] = {
             {1200, nullptr, "GetZOrderCountMin"},
+            {1202, nullptr, "GetZOrderCountMax"},
+            {1203, nullptr, "GetDisplayLogicalResolution"},
+            {1204, nullptr, "SetDisplayMagnification"},
+            {2201, nullptr, "SetLayerPosition"},
+            {2203, nullptr, "SetLayerSize"},
+            {2204, nullptr, "GetLayerZ"},
             {2205, &ISystemDisplayService::SetLayerZ, "SetLayerZ"},
+            {2207, &ISystemDisplayService::SetLayerVisibility, "SetLayerVisibility"},
+            {2209, nullptr, "SetLayerAlpha"},
+            {2312, nullptr, "CreateStrayLayer"},
+            {2400, nullptr, "OpenIndirectLayer"},
+            {2401, nullptr, "CloseIndirectLayer"},
+            {2402, nullptr, "FlipIndirectLayer"},
+            {3000, nullptr, "ListDisplayModes"},
+            {3001, nullptr, "ListDisplayRgbRanges"},
+            {3002, nullptr, "ListDisplayContentTypes"},
+            {3200, nullptr, "GetDisplayMode"},
+            {3201, nullptr, "SetDisplayMode"},
+            {3202, nullptr, "GetDisplayUnderscan"},
+            {3203, nullptr, "SetDisplayUnderscan"},
+            {3204, nullptr, "GetDisplayContentType"},
+            {3205, nullptr, "SetDisplayContentType"},
+            {3206, nullptr, "GetDisplayRgbRange"},
+            {3207, nullptr, "SetDisplayRgbRange"},
+            {3208, nullptr, "GetDisplayCmuMode"},
+            {3209, nullptr, "SetDisplayCmuMode"},
+            {3210, nullptr, "GetDisplayContrastRatio"},
+            {3211, nullptr, "SetDisplayContrastRatio"},
+            {3214, nullptr, "GetDisplayGamma"},
+            {3215, nullptr, "SetDisplayGamma"},
+            {3216, nullptr, "GetDisplayCmuLuma"},
+            {3217, nullptr, "SetDisplayCmuLuma"},
+            {8225, nullptr, "GetSharedBufferMemoryHandleId"},
+            {8250, nullptr, "OpenSharedLayer"},
+            {8251, nullptr, "CloseSharedLayer"},
+            {8252, nullptr, "ConnectSharedLayer"},
+            {8253, nullptr, "DisconnectSharedLayer"},
+            {8254, nullptr, "AcquireSharedFrameBuffer"},
+            {8255, nullptr, "PresentSharedFrameBuffer"},
+            {8256, nullptr, "GetSharedFrameBufferAcquirableEvent"},
+            {8257, nullptr, "FillSharedFrameBufferColor"},
+            {8258, nullptr, "CancelSharedFrameBuffer"},
         };
         RegisterHandlers(functions);
     }
@@ -588,13 +625,23 @@ public:
 
 private:
     void SetLayerZ(Kernel::HLERequestContext& ctx) {
-        LOG_WARNING(Service_VI, "(STUBBED) called");
+        NGLOG_WARNING(Service_VI, "(STUBBED) called");
         IPC::RequestParser rp{ctx};
         u64 layer_id = rp.Pop<u64>();
         u64 z_value = rp.Pop<u64>();
 
         IPC::ResponseBuilder rb = rp.MakeBuilder(2, 0, 0);
         rb.Push(RESULT_SUCCESS);
+    }
+
+    void SetLayerVisibility(Kernel::HLERequestContext& ctx) {
+        IPC::RequestParser rp{ctx};
+        u64 layer_id = rp.Pop<u64>();
+        bool visibility = rp.Pop<bool>();
+        IPC::ResponseBuilder rb = rp.MakeBuilder(2, 0, 0);
+        rb.Push(RESULT_SUCCESS);
+        NGLOG_WARNING(Service_VI, "(STUBBED) called, layer_id=0x{:08X}, visibility={}", layer_id,
+                      visibility);
     }
 };
 
@@ -603,10 +650,72 @@ public:
     explicit IManagerDisplayService(std::shared_ptr<NVFlinger::NVFlinger> nv_flinger)
         : ServiceFramework("IManagerDisplayService"), nv_flinger(std::move(nv_flinger)) {
         static const FunctionInfo functions[] = {
+            {200, nullptr, "AllocateProcessHeapBlock"},
+            {201, nullptr, "FreeProcessHeapBlock"},
             {1020, &IManagerDisplayService::CloseDisplay, "CloseDisplay"},
             {1102, nullptr, "GetDisplayResolution"},
             {2010, &IManagerDisplayService::CreateManagedLayer, "CreateManagedLayer"},
+            {2011, nullptr, "DestroyManagedLayer"},
+            {2050, nullptr, "CreateIndirectLayer"},
+            {2051, nullptr, "DestroyIndirectLayer"},
+            {2052, nullptr, "CreateIndirectProducerEndPoint"},
+            {2053, nullptr, "DestroyIndirectProducerEndPoint"},
+            {2054, nullptr, "CreateIndirectConsumerEndPoint"},
+            {2055, nullptr, "DestroyIndirectConsumerEndPoint"},
+            {2300, nullptr, "AcquireLayerTexturePresentingEvent"},
+            {2301, nullptr, "ReleaseLayerTexturePresentingEvent"},
+            {2302, nullptr, "GetDisplayHotplugEvent"},
+            {2402, nullptr, "GetDisplayHotplugState"},
+            {2501, nullptr, "GetCompositorErrorInfo"},
+            {2601, nullptr, "GetDisplayErrorEvent"},
+            {4201, nullptr, "SetDisplayAlpha"},
+            {4203, nullptr, "SetDisplayLayerStack"},
+            {4205, nullptr, "SetDisplayPowerState"},
+            {4206, nullptr, "SetDefaultDisplay"},
             {6000, &IManagerDisplayService::AddToLayerStack, "AddToLayerStack"},
+            {6001, nullptr, "RemoveFromLayerStack"},
+            {6002, &IManagerDisplayService::SetLayerVisibility, "SetLayerVisibility"},
+            {6003, nullptr, "SetLayerConfig"},
+            {6004, nullptr, "AttachLayerPresentationTracer"},
+            {6005, nullptr, "DetachLayerPresentationTracer"},
+            {6006, nullptr, "StartLayerPresentationRecording"},
+            {6007, nullptr, "StopLayerPresentationRecording"},
+            {6008, nullptr, "StartLayerPresentationFenceWait"},
+            {6009, nullptr, "StopLayerPresentationFenceWait"},
+            {6010, nullptr, "GetLayerPresentationAllFencesExpiredEvent"},
+            {7000, nullptr, "SetContentVisibility"},
+            {8000, nullptr, "SetConductorLayer"},
+            {8100, nullptr, "SetIndirectProducerFlipOffset"},
+            {8200, nullptr, "CreateSharedBufferStaticStorage"},
+            {8201, nullptr, "CreateSharedBufferTransferMemory"},
+            {8202, nullptr, "DestroySharedBuffer"},
+            {8203, nullptr, "BindSharedLowLevelLayerToManagedLayer"},
+            {8204, nullptr, "BindSharedLowLevelLayerToIndirectLayer"},
+            {8207, nullptr, "UnbindSharedLowLevelLayer"},
+            {8208, nullptr, "ConnectSharedLowLevelLayerToSharedBuffer"},
+            {8209, nullptr, "DisconnectSharedLowLevelLayerFromSharedBuffer"},
+            {8210, nullptr, "CreateSharedLayer"},
+            {8211, nullptr, "DestroySharedLayer"},
+            {8216, nullptr, "AttachSharedLayerToLowLevelLayer"},
+            {8217, nullptr, "ForceDetachSharedLayerFromLowLevelLayer"},
+            {8218, nullptr, "StartDetachSharedLayerFromLowLevelLayer"},
+            {8219, nullptr, "FinishDetachSharedLayerFromLowLevelLayer"},
+            {8220, nullptr, "GetSharedLayerDetachReadyEvent"},
+            {8221, nullptr, "GetSharedLowLevelLayerSynchronizedEvent"},
+            {8222, nullptr, "CheckSharedLowLevelLayerSynchronized"},
+            {8223, nullptr, "RegisterSharedBufferImporterAruid"},
+            {8224, nullptr, "UnregisterSharedBufferImporterAruid"},
+            {8227, nullptr, "CreateSharedBufferProcessHeap"},
+            {8228, nullptr, "GetSharedLayerLayerStacks"},
+            {8229, nullptr, "SetSharedLayerLayerStacks"},
+            {8291, nullptr, "PresentDetachedSharedFrameBufferToLowLevelLayer"},
+            {8292, nullptr, "FillDetachedSharedFrameBufferColor"},
+            {8293, nullptr, "GetDetachedSharedFrameBufferImage"},
+            {8294, nullptr, "SetDetachedSharedFrameBufferImage"},
+            {8295, nullptr, "CopyDetachedSharedFrameBufferImage"},
+            {8296, nullptr, "SetDetachedSharedFrameBufferSubImage"},
+            {8297, nullptr, "GetSharedFrameBufferContentParameter"},
+            {8298, nullptr, "ExpandStartupLogoOnSharedFrameBuffer"},
         };
         RegisterHandlers(functions);
     }
@@ -614,7 +723,7 @@ public:
 
 private:
     void CloseDisplay(Kernel::HLERequestContext& ctx) {
-        LOG_WARNING(Service_VI, "(STUBBED) called");
+        NGLOG_WARNING(Service_VI, "(STUBBED) called");
         IPC::RequestParser rp{ctx};
         u64 display = rp.Pop<u64>();
 
@@ -623,7 +732,7 @@ private:
     }
 
     void CreateManagedLayer(Kernel::HLERequestContext& ctx) {
-        LOG_WARNING(Service_VI, "(STUBBED) called");
+        NGLOG_WARNING(Service_VI, "(STUBBED) called");
         IPC::RequestParser rp{ctx};
         u32 unknown = rp.Pop<u32>();
         rp.Skip(1, false);
@@ -638,13 +747,23 @@ private:
     }
 
     void AddToLayerStack(Kernel::HLERequestContext& ctx) {
-        LOG_WARNING(Service_VI, "(STUBBED) called");
+        NGLOG_WARNING(Service_VI, "(STUBBED) called");
         IPC::RequestParser rp{ctx};
         u32 stack = rp.Pop<u32>();
         u64 layer_id = rp.Pop<u64>();
 
         IPC::ResponseBuilder rb = rp.MakeBuilder(2, 0, 0);
         rb.Push(RESULT_SUCCESS);
+    }
+
+    void SetLayerVisibility(Kernel::HLERequestContext& ctx) {
+        IPC::RequestParser rp{ctx};
+        u64 layer_id = rp.Pop<u64>();
+        bool visibility = rp.Pop<bool>();
+        IPC::ResponseBuilder rb = rp.MakeBuilder(2, 0, 0);
+        rb.Push(RESULT_SUCCESS);
+        NGLOG_WARNING(Service_VI, "(STUBBED) called, layer_id=0x{:X}, visibility={}", layer_id,
+                      visibility);
     }
 
     std::shared_ptr<NVFlinger::NVFlinger> nv_flinger;
@@ -657,7 +776,7 @@ public:
 
 private:
     void GetRelayService(Kernel::HLERequestContext& ctx) {
-        LOG_WARNING(Service_VI, "(STUBBED) called");
+        NGLOG_WARNING(Service_VI, "(STUBBED) called");
 
         IPC::ResponseBuilder rb{ctx, 2, 0, 1};
         rb.Push(RESULT_SUCCESS);
@@ -665,7 +784,7 @@ private:
     }
 
     void GetSystemDisplayService(Kernel::HLERequestContext& ctx) {
-        LOG_WARNING(Service_VI, "(STUBBED) called");
+        NGLOG_WARNING(Service_VI, "(STUBBED) called");
 
         IPC::ResponseBuilder rb{ctx, 2, 0, 1};
         rb.Push(RESULT_SUCCESS);
@@ -673,7 +792,7 @@ private:
     }
 
     void GetManagerDisplayService(Kernel::HLERequestContext& ctx) {
-        LOG_WARNING(Service_VI, "(STUBBED) called");
+        NGLOG_WARNING(Service_VI, "(STUBBED) called");
 
         IPC::ResponseBuilder rb{ctx, 2, 0, 1};
         rb.Push(RESULT_SUCCESS);
@@ -681,7 +800,7 @@ private:
     }
 
     void GetIndirectDisplayTransactionService(Kernel::HLERequestContext& ctx) {
-        LOG_WARNING(Service_VI, "(STUBBED) called");
+        NGLOG_WARNING(Service_VI, "(STUBBED) called");
 
         IPC::ResponseBuilder rb{ctx, 2, 0, 1};
         rb.Push(RESULT_SUCCESS);
@@ -689,7 +808,7 @@ private:
     }
 
     void OpenDisplay(Kernel::HLERequestContext& ctx) {
-        LOG_WARNING(Service_VI, "(STUBBED) called");
+        NGLOG_WARNING(Service_VI, "(STUBBED) called");
         IPC::RequestParser rp{ctx};
         auto name_buf = rp.PopRaw<std::array<u8, 0x40>>();
         auto end = std::find(name_buf.begin(), name_buf.end(), '\0');
@@ -704,7 +823,7 @@ private:
     }
 
     void CloseDisplay(Kernel::HLERequestContext& ctx) {
-        LOG_WARNING(Service_VI, "(STUBBED) called");
+        NGLOG_WARNING(Service_VI, "(STUBBED) called");
         IPC::RequestParser rp{ctx};
         u64 display_id = rp.Pop<u64>();
 
@@ -713,7 +832,7 @@ private:
     }
 
     void GetDisplayResolution(Kernel::HLERequestContext& ctx) {
-        LOG_WARNING(Service_VI, "(STUBBED) called");
+        NGLOG_WARNING(Service_VI, "(STUBBED) called");
         IPC::RequestParser rp{ctx};
         u64 display_id = rp.Pop<u64>();
 
@@ -721,16 +840,16 @@ private:
         rb.Push(RESULT_SUCCESS);
 
         if (Settings::values.use_docked_mode) {
-            rb.Push(static_cast<u32>(DisplayResolution::DockedWidth));
-            rb.Push(static_cast<u32>(DisplayResolution::DockedHeight));
+            rb.Push(static_cast<u64>(DisplayResolution::DockedWidth));
+            rb.Push(static_cast<u64>(DisplayResolution::DockedHeight));
         } else {
-            rb.Push(static_cast<u32>(DisplayResolution::UndockedWidth));
-            rb.Push(static_cast<u32>(DisplayResolution::UndockedHeight));
+            rb.Push(static_cast<u64>(DisplayResolution::UndockedWidth));
+            rb.Push(static_cast<u64>(DisplayResolution::UndockedHeight));
         }
     }
 
     void SetLayerScalingMode(Kernel::HLERequestContext& ctx) {
-        LOG_WARNING(Service_VI, "(STUBBED) called");
+        NGLOG_WARNING(Service_VI, "(STUBBED) called");
         IPC::RequestParser rp{ctx};
         u32 scaling_mode = rp.Pop<u32>();
         u64 unknown = rp.Pop<u64>();
@@ -746,11 +865,11 @@ private:
         IPC::ResponseBuilder rb = rp.MakeBuilder(4, 0, 0);
         rb.Push(RESULT_SUCCESS);
         rb.Push<u64>(1);
-        LOG_WARNING(Service_VI, "(STUBBED) called");
+        NGLOG_WARNING(Service_VI, "(STUBBED) called");
     }
 
     void OpenLayer(Kernel::HLERequestContext& ctx) {
-        LOG_DEBUG(Service_VI, "called");
+        NGLOG_DEBUG(Service_VI, "called");
         IPC::RequestParser rp{ctx};
         auto name_buf = rp.PopRaw<std::array<u8, 0x40>>();
         auto end = std::find(name_buf.begin(), name_buf.end(), '\0');
@@ -770,7 +889,7 @@ private:
     }
 
     void CreateStrayLayer(Kernel::HLERequestContext& ctx) {
-        LOG_DEBUG(Service_VI, "called");
+        NGLOG_DEBUG(Service_VI, "called");
 
         IPC::RequestParser rp{ctx};
         u32 flags = rp.Pop<u32>();
@@ -790,7 +909,7 @@ private:
     }
 
     void DestroyStrayLayer(Kernel::HLERequestContext& ctx) {
-        LOG_WARNING(Service_VI, "(STUBBED) called");
+        NGLOG_WARNING(Service_VI, "(STUBBED) called");
 
         IPC::RequestParser rp{ctx};
         u64 layer_id = rp.Pop<u64>();
@@ -800,7 +919,7 @@ private:
     }
 
     void GetDisplayVsyncEvent(Kernel::HLERequestContext& ctx) {
-        LOG_WARNING(Service_VI, "(STUBBED) called");
+        NGLOG_WARNING(Service_VI, "(STUBBED) called");
         IPC::RequestParser rp{ctx};
         u64 display_id = rp.Pop<u64>();
 
@@ -825,13 +944,21 @@ IApplicationDisplayService::IApplicationDisplayService(
          "GetIndirectDisplayTransactionService"},
         {1000, &IApplicationDisplayService::ListDisplays, "ListDisplays"},
         {1010, &IApplicationDisplayService::OpenDisplay, "OpenDisplay"},
+        {1011, nullptr, "OpenDefaultDisplay"},
         {1020, &IApplicationDisplayService::CloseDisplay, "CloseDisplay"},
+        {1101, nullptr, "SetDisplayEnabled"},
         {1102, &IApplicationDisplayService::GetDisplayResolution, "GetDisplayResolution"},
-        {2101, &IApplicationDisplayService::SetLayerScalingMode, "SetLayerScalingMode"},
         {2020, &IApplicationDisplayService::OpenLayer, "OpenLayer"},
+        {2021, nullptr, "CloseLayer"},
         {2030, &IApplicationDisplayService::CreateStrayLayer, "CreateStrayLayer"},
         {2031, &IApplicationDisplayService::DestroyStrayLayer, "DestroyStrayLayer"},
+        {2101, &IApplicationDisplayService::SetLayerScalingMode, "SetLayerScalingMode"},
+        {2102, nullptr, "ConvertScalingMode"},
+        {2450, nullptr, "GetIndirectLayerImageMap"},
+        {2451, nullptr, "GetIndirectLayerImageCropMap"},
+        {2460, nullptr, "GetIndirectLayerImageRequiredMemoryInfo"},
         {5202, &IApplicationDisplayService::GetDisplayVsyncEvent, "GetDisplayVsyncEvent"},
+        {5203, nullptr, "GetDisplayVsyncEventForDebug"},
     };
     RegisterHandlers(functions);
 }
@@ -841,7 +968,7 @@ Module::Interface::Interface(std::shared_ptr<Module> module, const char* name,
     : ServiceFramework(name), module(std::move(module)), nv_flinger(std::move(nv_flinger)) {}
 
 void Module::Interface::GetDisplayService(Kernel::HLERequestContext& ctx) {
-    LOG_WARNING(Service_VI, "(STUBBED) called");
+    NGLOG_WARNING(Service_VI, "(STUBBED) called");
 
     IPC::ResponseBuilder rb{ctx, 2, 0, 1};
     rb.Push(RESULT_SUCCESS);
@@ -856,5 +983,4 @@ void InstallInterfaces(SM::ServiceManager& service_manager,
     std::make_shared<VI_U>(module, nv_flinger)->InstallAsService(service_manager);
 }
 
-} // namespace VI
-} // namespace Service
+} // namespace Service::VI

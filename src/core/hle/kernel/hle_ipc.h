@@ -164,19 +164,19 @@ public:
     }
 
     /// Helper function to read a buffer using the appropriate buffer descriptor
-    std::vector<u8> ReadBuffer() const;
+    std::vector<u8> ReadBuffer(int buffer_index = 0) const;
 
     /// Helper function to write a buffer using the appropriate buffer descriptor
-    size_t WriteBuffer(const void* buffer, size_t size) const;
+    size_t WriteBuffer(const void* buffer, size_t size, int buffer_index = 0) const;
 
     /// Helper function to write a buffer using the appropriate buffer descriptor
-    size_t WriteBuffer(const std::vector<u8>& buffer) const;
+    size_t WriteBuffer(const std::vector<u8>& buffer, int buffer_index = 0) const;
 
     /// Helper function to get the size of the input buffer
-    size_t GetReadBufferSize() const;
+    size_t GetReadBufferSize(int buffer_index = 0) const;
 
     /// Helper function to get the size of the output buffer
-    size_t GetWriteBufferSize() const;
+    size_t GetWriteBufferSize(int buffer_index = 0) const;
 
     template <typename T>
     SharedPtr<T> GetCopyObject(size_t index) {
@@ -200,6 +200,16 @@ public:
 
     void AddDomainObject(std::shared_ptr<SessionRequestHandler> object) {
         domain_objects.emplace_back(std::move(object));
+    }
+
+    template <typename T>
+    std::shared_ptr<T> GetDomainRequestHandler(size_t index) const {
+        return std::static_pointer_cast<T>(domain_request_handlers[index]);
+    }
+
+    void SetDomainRequestHandlers(
+        const std::vector<std::shared_ptr<SessionRequestHandler>>& handlers) {
+        domain_request_handlers = handlers;
     }
 
     /// Clears the list of objects so that no lingering objects are written accidentally to the
@@ -245,6 +255,8 @@ private:
     unsigned data_payload_offset{};
     unsigned buffer_c_offset{};
     u32_le command{};
+
+    std::vector<std::shared_ptr<SessionRequestHandler>> domain_request_handlers;
 };
 
 } // namespace Kernel

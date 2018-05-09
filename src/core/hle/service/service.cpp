@@ -30,6 +30,7 @@
 #include "core/hle/service/ns/ns.h"
 #include "core/hle/service/nvdrv/nvdrv.h"
 #include "core/hle/service/pctl/pctl.h"
+#include "core/hle/service/prepo/prepo.h"
 #include "core/hle/service/service.h"
 #include "core/hle/service/set/settings.h"
 #include "core/hle/service/sm/controller.h"
@@ -57,10 +58,9 @@ static std::string MakeFunctionString(const char* name, const char* port_name,
     // Number of params == bits 0-5 + bits 6-11
     int num_params = (cmd_buff[0] & 0x3F) + ((cmd_buff[0] >> 6) & 0x3F);
 
-    std::string function_string =
-        Common::StringFromFormat("function '%s': port=%s", name, port_name);
+    std::string function_string = fmt::format("function '{}': port={}", name, port_name);
     for (int i = 1; i <= num_params; ++i) {
-        function_string += Common::StringFromFormat(", cmd_buff[%i]=0x%X", i, cmd_buff[i]);
+        function_string += fmt::format(", cmd_buff[{}]=0x{:X}", i, cmd_buff[i]);
     }
     return function_string;
 }
@@ -113,14 +113,14 @@ void ServiceFrameworkBase::ReportUnimplementedFunction(Kernel::HLERequestContext
     std::string function_name = info == nullptr ? fmt::format("{}", ctx.GetCommand()) : info->name;
 
     fmt::memory_buffer buf;
-    fmt::format_to(buf, "function '{}': port='{}' cmd_buf={{[0]={:#x}", function_name, service_name,
-                   cmd_buf[0]);
+    fmt::format_to(buf, "function '{}': port='{}' cmd_buf={{[0]=0x{:X}", function_name,
+                   service_name, cmd_buf[0]);
     for (int i = 1; i <= 8; ++i) {
-        fmt::format_to(buf, ", [{}]={:#x}", i, cmd_buf[i]);
+        fmt::format_to(buf, ", [{}]=0x{:X}", i, cmd_buf[i]);
     }
     buf.push_back('}');
 
-    LOG_ERROR(Service, "unknown / unimplemented %s", fmt::to_string(buf).c_str());
+    NGLOG_ERROR(Service, "unknown / unimplemented {}", fmt::to_string(buf));
     UNIMPLEMENTED();
 }
 
@@ -131,8 +131,8 @@ void ServiceFrameworkBase::InvokeRequest(Kernel::HLERequestContext& ctx) {
         return ReportUnimplementedFunction(ctx, info);
     }
 
-    LOG_TRACE(
-        Service, "%s",
+    NGLOG_TRACE(
+        Service, "{}",
         MakeFunctionString(info->name, GetServiceName().c_str(), ctx.CommandBuffer()).c_str());
     handler_invoker(this, info->handler_callback, ctx);
 }
@@ -145,7 +145,7 @@ ResultCode ServiceFrameworkBase::HandleSyncRequest(Kernel::HLERequestContext& co
         return ResultCode(ErrorModule::HIPC, ErrorDescription::RemoteProcessDead);
     }
     case IPC::CommandType::Control: {
-        SM::g_service_manager->InvokeControlRequest(context);
+        Core::System::GetInstance().ServiceManager().InvokeControlRequest(context);
         break;
     }
     case IPC::CommandType::Request: {
@@ -153,7 +153,7 @@ ResultCode ServiceFrameworkBase::HandleSyncRequest(Kernel::HLERequestContext& co
         break;
     }
     default:
-        UNIMPLEMENTED_MSG("command_type=%d", static_cast<int>(context.GetCommandType()));
+        UNIMPLEMENTED_MSG("command_type={}", static_cast<int>(context.GetCommandType()));
     }
 
     context.WriteToOutgoingCommandBuffer(*Kernel::GetCurrentThread());
@@ -170,43 +170,42 @@ void AddNamedPort(std::string name, SharedPtr<ClientPort> port) {
 }
 
 /// Initialize ServiceManager
-void Init() {
+void Init(std::shared_ptr<SM::ServiceManager>& sm) {
     // NVFlinger needs to be accessed by several services like Vi and AppletOE so we instantiate it
     // here and pass it into the respective InstallInterfaces functions.
     auto nv_flinger = std::make_shared<NVFlinger::NVFlinger>();
 
-    SM::g_service_manager = std::make_shared<SM::ServiceManager>();
-    SM::ServiceManager::InstallInterfaces(SM::g_service_manager);
+    SM::ServiceManager::InstallInterfaces(sm);
 
-    Account::InstallInterfaces(*SM::g_service_manager);
-    AM::InstallInterfaces(*SM::g_service_manager, nv_flinger);
-    AOC::InstallInterfaces(*SM::g_service_manager);
-    APM::InstallInterfaces(*SM::g_service_manager);
-    Audio::InstallInterfaces(*SM::g_service_manager);
-    Fatal::InstallInterfaces(*SM::g_service_manager);
-    FileSystem::InstallInterfaces(*SM::g_service_manager);
-    Friend::InstallInterfaces(*SM::g_service_manager);
-    HID::InstallInterfaces(*SM::g_service_manager);
-    LM::InstallInterfaces(*SM::g_service_manager);
-    NFP::InstallInterfaces(*SM::g_service_manager);
-    NIFM::InstallInterfaces(*SM::g_service_manager);
-    NS::InstallInterfaces(*SM::g_service_manager);
-    Nvidia::InstallInterfaces(*SM::g_service_manager);
-    PCTL::InstallInterfaces(*SM::g_service_manager);
-    Sockets::InstallInterfaces(*SM::g_service_manager);
-    SPL::InstallInterfaces(*SM::g_service_manager);
-    SSL::InstallInterfaces(*SM::g_service_manager);
-    Time::InstallInterfaces(*SM::g_service_manager);
-    VI::InstallInterfaces(*SM::g_service_manager, nv_flinger);
-    Set::InstallInterfaces(*SM::g_service_manager);
+    Account::InstallInterfaces(*sm);
+    AM::InstallInterfaces(*sm, nv_flinger);
+    AOC::InstallInterfaces(*sm);
+    APM::InstallInterfaces(*sm);
+    Audio::InstallInterfaces(*sm);
+    Fatal::InstallInterfaces(*sm);
+    FileSystem::InstallInterfaces(*sm);
+    Friend::InstallInterfaces(*sm);
+    HID::InstallInterfaces(*sm);
+    LM::InstallInterfaces(*sm);
+    NFP::InstallInterfaces(*sm);
+    NIFM::InstallInterfaces(*sm);
+    NS::InstallInterfaces(*sm);
+    Nvidia::InstallInterfaces(*sm);
+    PCTL::InstallInterfaces(*sm);
+    PlayReport::InstallInterfaces(*sm);
+    Sockets::InstallInterfaces(*sm);
+    SPL::InstallInterfaces(*sm);
+    SSL::InstallInterfaces(*sm);
+    Time::InstallInterfaces(*sm);
+    VI::InstallInterfaces(*sm, nv_flinger);
+    Set::InstallInterfaces(*sm);
 
-    LOG_DEBUG(Service, "initialized OK");
+    NGLOG_DEBUG(Service, "initialized OK");
 }
 
 /// Shutdown ServiceManager
 void Shutdown() {
-    SM::g_service_manager = nullptr;
     g_kernel_named_ports.clear();
-    LOG_DEBUG(Service, "shutdown OK");
+    NGLOG_DEBUG(Service, "shutdown OK");
 }
 } // namespace Service

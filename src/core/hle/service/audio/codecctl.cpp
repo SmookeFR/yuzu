@@ -7,8 +7,7 @@
 #include "core/hle/kernel/hle_ipc.h"
 #include "core/hle/service/audio/codecctl.h"
 
-namespace Service {
-namespace Audio {
+namespace Service::Audio {
 
 CodecCtl::CodecCtl() : ServiceFramework("codecctl") {
     static const FunctionInfo functions[] = {
@@ -22,12 +21,11 @@ CodecCtl::CodecCtl() : ServiceFramework("codecctl") {
         {0x00000007, nullptr, "SetCodecActiveTarget"},
         {0x00000008, nullptr, "Unknown"},
         {0x00000009, nullptr, "BindCodecHeadphoneMicJackInterrupt"},
-        {0x0000000A, nullptr, "IsCodecHeadphoneMicJackInserted"},
-        {0x0000000B, nullptr, "ClearCodecHeadphoneMicJackInterrupt"},
-        {0x0000000C, nullptr, "IsCodecDeviceRequested"},
+        {0x00000010, nullptr, "IsCodecHeadphoneMicJackInserted"},
+        {0x00000011, nullptr, "ClearCodecHeadphoneMicJackInterrupt"},
+        {0x00000012, nullptr, "IsCodecDeviceRequested"},
     };
     RegisterHandlers(functions);
 }
 
-} // namespace Audio
-} // namespace Service
+} // namespace Service::Audio

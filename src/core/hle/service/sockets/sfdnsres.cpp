@@ -5,13 +5,12 @@
 #include "core/hle/ipc_helpers.h"
 #include "core/hle/service/sockets/sfdnsres.h"
 
-namespace Service {
-namespace Sockets {
+namespace Service::Sockets {
 
 void SFDNSRES::GetAddrInfo(Kernel::HLERequestContext& ctx) {
     IPC::RequestParser rp{ctx};
 
-    LOG_WARNING(Service, "(STUBBED) called");
+    NGLOG_WARNING(Service, "(STUBBED) called");
 
     IPC::ResponseBuilder rb{ctx, 2};
 
@@ -30,9 +29,9 @@ SFDNSRES::SFDNSRES() : ServiceFramework("sfdnsres") {
         {7, nullptr, "GetNameInfo"},
         {8, nullptr, "RequestCancelHandle"},
         {9, nullptr, "CancelSocketCall"},
+        {11, nullptr, "ClearDnsIpServerAddressArray"},
     };
     RegisterHandlers(functions);
 }
 
-} // namespace Sockets
-} // namespace Service
+} // namespace Service::Sockets

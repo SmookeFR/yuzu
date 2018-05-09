@@ -6,8 +6,7 @@
 #include "core/hle/ipc_helpers.h"
 #include "core/hle/service/aoc/aoc_u.h"
 
-namespace Service {
-namespace AOC {
+namespace Service::AOC {
 
 AOC_U::AOC_U() : ServiceFramework("aoc:u") {
     static const FunctionInfo functions[] = {
@@ -19,6 +18,7 @@ AOC_U::AOC_U() : ServiceFramework("aoc:u") {
         {5, nullptr, "GetAddOnContentBaseId"},
         {6, nullptr, "PrepareAddOnContentByApplicationId"},
         {7, nullptr, "PrepareAddOnContent"},
+        {8, nullptr, "GetAddOnContentListChangedEvent"},
     };
     RegisterHandlers(functions);
 }
@@ -27,19 +27,18 @@ void AOC_U::CountAddOnContent(Kernel::HLERequestContext& ctx) {
     IPC::ResponseBuilder rb{ctx, 4};
     rb.Push(RESULT_SUCCESS);
     rb.Push<u64>(0);
-    LOG_WARNING(Service_AOC, "(STUBBED) called");
+    NGLOG_WARNING(Service_AOC, "(STUBBED) called");
 }
 
 void AOC_U::ListAddOnContent(Kernel::HLERequestContext& ctx) {
     IPC::ResponseBuilder rb{ctx, 4};
     rb.Push(RESULT_SUCCESS);
     rb.Push<u64>(0);
-    LOG_WARNING(Service_AOC, "(STUBBED) called");
+    NGLOG_WARNING(Service_AOC, "(STUBBED) called");
 }
 
 void InstallInterfaces(SM::ServiceManager& service_manager) {
     std::make_shared<AOC_U>()->InstallAsService(service_manager);
 }
 
-} // namespace AOC
-} // namespace Service
+} // namespace Service::AOC

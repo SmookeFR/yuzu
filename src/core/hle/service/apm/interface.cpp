@@ -7,8 +7,7 @@
 #include "core/hle/service/apm/apm.h"
 #include "core/hle/service/apm/interface.h"
 
-namespace Service {
-namespace APM {
+namespace Service::APM {
 
 class ISession final : public ServiceFramework<ISession> {
 public:
@@ -30,8 +29,8 @@ private:
         IPC::ResponseBuilder rb{ctx, 2};
         rb.Push(RESULT_SUCCESS);
 
-        LOG_WARNING(Service_APM, "(STUBBED) called mode=%u config=%u", static_cast<u32>(mode),
-                    config);
+        NGLOG_WARNING(Service_APM, "(STUBBED) called mode={} config={}", static_cast<u32>(mode),
+                      config);
     }
 
     void GetPerformanceConfiguration(Kernel::HLERequestContext& ctx) {
@@ -43,7 +42,7 @@ private:
         rb.Push(RESULT_SUCCESS);
         rb.Push<u32>(0); // Performance configuration
 
-        LOG_WARNING(Service_APM, "(STUBBED) called mode=%u", static_cast<u32>(mode));
+        NGLOG_WARNING(Service_APM, "(STUBBED) called mode={}", static_cast<u32>(mode));
     }
 };
 
@@ -62,5 +61,4 @@ void APM::OpenSession(Kernel::HLERequestContext& ctx) {
     rb.PushIpcInterface<ISession>();
 }
 
-} // namespace APM
-} // namespace Service
+} // namespace Service::APM

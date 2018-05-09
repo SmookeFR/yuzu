@@ -11,8 +11,7 @@ namespace FileSys {
 class FileSystemBackend;
 }
 
-namespace Service {
-namespace FileSystem {
+namespace Service::FileSystem {
 
 class FSP_SRV final : public ServiceFramework<FSP_SRV> {
 public:
@@ -22,7 +21,7 @@ public:
 private:
     void TryLoadRomFS();
 
-    void Initalize(Kernel::HLERequestContext& ctx);
+    void Initialize(Kernel::HLERequestContext& ctx);
     void MountSdCard(Kernel::HLERequestContext& ctx);
     void CreateSaveData(Kernel::HLERequestContext& ctx);
     void MountSaveData(Kernel::HLERequestContext& ctx);
@@ -33,5 +32,4 @@ private:
     std::unique_ptr<FileSys::FileSystemBackend> romfs;
 };
 
-} // namespace FileSystem
-} // namespace Service
+} // namespace Service::FileSystem

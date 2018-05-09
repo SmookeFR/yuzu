@@ -11,9 +11,7 @@
 #include "common/swap.h"
 #include "core/hle/service/nvdrv/devices/nvdevice.h"
 
-namespace Service {
-namespace Nvidia {
-namespace Devices {
+namespace Service::Nvidia::Devices {
 
 class nvmap;
 
@@ -28,6 +26,7 @@ private:
     enum class IoctlCommand : u32_le {
         IocInitalizeExCommand = 0x40284109,
         IocAllocateSpaceCommand = 0xC0184102,
+        IocRemapCommand = 0x00000014,
         IocMapBufferExCommand = 0xC0284106,
         IocBindChannelCommand = 0x40044101,
         IocGetVaRegionsCommand = 0xC0404108,
@@ -55,6 +54,16 @@ private:
         };
     };
     static_assert(sizeof(IoctlAllocSpace) == 24, "IoctlInitalizeEx is incorrect size");
+
+    struct IoctlRemapEntry {
+        u16_le flags;
+        u16_le kind;
+        u32_le nvmap_handle;
+        INSERT_PADDING_WORDS(1);
+        u32_le offset;
+        u32_le pages;
+    };
+    static_assert(sizeof(IoctlRemapEntry) == 20, "IoctlRemapEntry is incorrect size");
 
     struct IoctlMapBufferEx {
         u32_le flags; // bit0: fixed_offset, bit2: cacheable
@@ -93,6 +102,7 @@ private:
 
     u32 InitalizeEx(const std::vector<u8>& input, std::vector<u8>& output);
     u32 AllocateSpace(const std::vector<u8>& input, std::vector<u8>& output);
+    u32 Remap(const std::vector<u8>& input, std::vector<u8>& output);
     u32 MapBufferEx(const std::vector<u8>& input, std::vector<u8>& output);
     u32 BindChannel(const std::vector<u8>& input, std::vector<u8>& output);
     u32 GetVARegions(const std::vector<u8>& input, std::vector<u8>& output);
@@ -100,6 +110,4 @@ private:
     std::shared_ptr<nvmap> nvmap_dev;
 };
 
-} // namespace Devices
-} // namespace Nvidia
-} // namespace Service
+} // namespace Service::Nvidia::Devices

@@ -17,21 +17,24 @@
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif
+#include <boost/optional.hpp>
 #include <glad/glad.h>
 #include "common/assert.h"
 #include "common/common_funcs.h"
 #include "common/common_types.h"
 #include "common/math_util.h"
 #include "video_core/gpu.h"
+#include "video_core/memory_manager.h"
 #include "video_core/renderer_opengl/gl_resource_manager.h"
+#include "video_core/textures/texture.h"
 
 struct CachedSurface;
 using Surface = std::shared_ptr<CachedSurface>;
 using SurfaceSet = std::set<Surface>;
 
-using SurfaceRegions = boost::icl::interval_set<VAddr>;
-using SurfaceMap = boost::icl::interval_map<VAddr, Surface>;
-using SurfaceCache = boost::icl::interval_map<VAddr, SurfaceSet>;
+using SurfaceRegions = boost::icl::interval_set<Tegra::GPUVAddr>;
+using SurfaceMap = boost::icl::interval_map<Tegra::GPUVAddr, Surface>;
+using SurfaceCache = boost::icl::interval_map<Tegra::GPUVAddr, SurfaceSet>;
 
 using SurfaceInterval = SurfaceCache::interval_type;
 static_assert(std::is_same<SurfaceRegions::interval_type, SurfaceCache::interval_type>() &&
@@ -51,76 +54,90 @@ enum class ScaleMatch {
 
 struct SurfaceParams {
     enum class PixelFormat {
-        // First 5 formats are shared between textures and color buffers
-        RGBA8 = 0,
-        RGB8 = 1,
-        RGB5A1 = 2,
-        RGB565 = 3,
-        RGBA4 = 4,
+        ABGR8 = 0,
+        B5G6R5 = 1,
+        A2B10G10R10 = 2,
+        DXT1 = 3,
+        DXT23 = 4,
+        DXT45 = 5,
 
-        // Texture-only formats
-        IA8 = 5,
-        RG8 = 6,
-        I8 = 7,
-        A8 = 8,
-        IA4 = 9,
-        I4 = 10,
-        A4 = 11,
-        ETC1 = 12,
-        ETC1A4 = 13,
-
-        // Depth buffer-only formats
-        D16 = 14,
-        // gap
-        D24 = 16,
-        D24S8 = 17,
-
+        Max,
         Invalid = 255,
     };
 
-    enum class SurfaceType {
-        Color = 0,
-        Texture = 1,
-        Depth = 2,
-        DepthStencil = 3,
-        Fill = 4,
-        Invalid = 5
+    static constexpr size_t MaxPixelFormat = static_cast<size_t>(PixelFormat::Max);
+
+    enum class ComponentType {
+        Invalid = 0,
+        SNorm = 1,
+        UNorm = 2,
+        SInt = 3,
+        UInt = 4,
+        Float = 5,
     };
 
-    static constexpr unsigned int GetFormatBpp(PixelFormat format) {
-        constexpr std::array<unsigned int, 18> bpp_table = {
-            32, // RGBA8
-            24, // RGB8
-            16, // RGB5A1
-            16, // RGB565
-            16, // RGBA4
-            16, // IA8
-            16, // RG8
-            8,  // I8
-            8,  // A8
-            8,  // IA4
-            4,  // I4
-            4,  // A4
-            4,  // ETC1
-            8,  // ETC1A4
-            16, // D16
-            0,
-            24, // D24
-            32, // D24S8
-        };
+    enum class SurfaceType {
+        ColorTexture = 0,
+        Depth = 1,
+        DepthStencil = 2,
+        Fill = 3,
+        Invalid = 4,
+    };
 
-        assert(static_cast<size_t>(format) < bpp_table.size());
+    /**
+     * Gets the compression factor for the specified PixelFormat. This applies to just the
+     * "compressed width" and "compressed height", not the overall compression factor of a
+     * compressed image. This is used for maintaining proper surface sizes for compressed texture
+     * formats.
+     */
+    static constexpr u32 GetCompresssionFactor(PixelFormat format) {
+        if (format == PixelFormat::Invalid)
+            return 0;
+
+        constexpr std::array<u32, MaxPixelFormat> compression_factor_table = {{
+            1, // ABGR8
+            1, // B5G6R5
+            1, // A2B10G10R10
+            4, // DXT1
+            4, // DXT23
+            4, // DXT45
+        }};
+
+        ASSERT(static_cast<size_t>(format) < compression_factor_table.size());
+        return compression_factor_table[static_cast<size_t>(format)];
+    }
+    u32 GetCompresssionFactor() const {
+        return GetCompresssionFactor(pixel_format);
+    }
+
+    static constexpr u32 GetFormatBpp(PixelFormat format) {
+        if (format == PixelFormat::Invalid)
+            return 0;
+
+        constexpr std::array<u32, MaxPixelFormat> bpp_table = {{
+            32,  // ABGR8
+            16,  // B5G6R5
+            32,  // A2B10G10R10
+            64,  // DXT1
+            128, // DXT23
+            128, // DXT45
+        }};
+
+        ASSERT(static_cast<size_t>(format) < bpp_table.size());
         return bpp_table[static_cast<size_t>(format)];
     }
-    unsigned int GetFormatBpp() const {
+    u32 GetFormatBpp() const {
         return GetFormatBpp(pixel_format);
     }
 
     static PixelFormat PixelFormatFromRenderTargetFormat(Tegra::RenderTargetFormat format) {
         switch (format) {
         case Tegra::RenderTargetFormat::RGBA8_UNORM:
-            return PixelFormat::RGBA8;
+            return PixelFormat::ABGR8;
+        case Tegra::RenderTargetFormat::RGB10_A2_UNORM:
+            return PixelFormat::A2B10G10R10;
         default:
+            NGLOG_CRITICAL(HW_GPU, "Unimplemented format={}", static_cast<u32>(format));
             UNREACHABLE();
         }
     }
@@ -128,8 +145,84 @@ struct SurfaceParams {
     static PixelFormat PixelFormatFromGPUPixelFormat(Tegra::FramebufferConfig::PixelFormat format) {
         switch (format) {
         case Tegra::FramebufferConfig::PixelFormat::ABGR8:
-            return PixelFormat::RGBA8;
+            return PixelFormat::ABGR8;
         default:
+            NGLOG_CRITICAL(HW_GPU, "Unimplemented format={}", static_cast<u32>(format));
+            UNREACHABLE();
+        }
+    }
+
+    static PixelFormat PixelFormatFromTextureFormat(Tegra::Texture::TextureFormat format) {
+        // TODO(Subv): Properly implement this
+        switch (format) {
+        case Tegra::Texture::TextureFormat::A8R8G8B8:
+            return PixelFormat::ABGR8;
+        case Tegra::Texture::TextureFormat::B5G6R5:
+            return PixelFormat::B5G6R5;
+        case Tegra::Texture::TextureFormat::A2B10G10R10:
+            return PixelFormat::A2B10G10R10;
+        case Tegra::Texture::TextureFormat::DXT1:
+            return PixelFormat::DXT1;
+        case Tegra::Texture::TextureFormat::DXT23:
+            return PixelFormat::DXT23;
+        case Tegra::Texture::TextureFormat::DXT45:
+            return PixelFormat::DXT45;
+        default:
+            NGLOG_CRITICAL(HW_GPU, "Unimplemented format={}", static_cast<u32>(format));
+            UNREACHABLE();
+        }
+    }
+
+    static Tegra::Texture::TextureFormat TextureFormatFromPixelFormat(PixelFormat format) {
+        // TODO(Subv): Properly implement this
+        switch (format) {
+        case PixelFormat::ABGR8:
+            return Tegra::Texture::TextureFormat::A8R8G8B8;
+        case PixelFormat::B5G6R5:
+            return Tegra::Texture::TextureFormat::B5G6R5;
+        case PixelFormat::A2B10G10R10:
+            return Tegra::Texture::TextureFormat::A2B10G10R10;
+        case PixelFormat::DXT1:
+            return Tegra::Texture::TextureFormat::DXT1;
+        case PixelFormat::DXT23:
+            return Tegra::Texture::TextureFormat::DXT23;
+        case PixelFormat::DXT45:
+            return Tegra::Texture::TextureFormat::DXT45;
+        default:
+            UNREACHABLE();
+        }
+    }
+
+    static ComponentType ComponentTypeFromTexture(Tegra::Texture::ComponentType type) {
+        // TODO(Subv): Implement more component types
+        switch (type) {
+        case Tegra::Texture::ComponentType::UNORM:
+            return ComponentType::UNorm;
+        default:
+            NGLOG_CRITICAL(HW_GPU, "Unimplemented component type={}", static_cast<u32>(type));
+            UNREACHABLE();
+        }
+    }
+
+    static ComponentType ComponentTypeFromRenderTarget(Tegra::RenderTargetFormat format) {
+        // TODO(Subv): Implement more render targets
+        switch (format) {
+        case Tegra::RenderTargetFormat::RGBA8_UNORM:
+        case Tegra::RenderTargetFormat::RGB10_A2_UNORM:
+            return ComponentType::UNorm;
+        default:
+            NGLOG_CRITICAL(HW_GPU, "Unimplemented format={}", static_cast<u32>(format));
+            UNREACHABLE();
+        }
+    }
+
+    static ComponentType ComponentTypeFromGPUPixelFormat(
+        Tegra::FramebufferConfig::PixelFormat format) {
+        switch (format) {
+        case Tegra::FramebufferConfig::PixelFormat::ABGR8:
+            return ComponentType::UNorm;
+        default:
+            NGLOG_CRITICAL(HW_GPU, "Unimplemented format={}", static_cast<u32>(format));
             UNREACHABLE();
         }
     }
@@ -138,8 +231,7 @@ struct SurfaceParams {
         SurfaceType a_type = GetFormatType(pixel_format_a);
         SurfaceType b_type = GetFormatType(pixel_format_b);
 
-        if ((a_type == SurfaceType::Color || a_type == SurfaceType::Texture) &&
-            (b_type == SurfaceType::Color || b_type == SurfaceType::Texture)) {
+        if (a_type == SurfaceType::ColorTexture && b_type == SurfaceType::ColorTexture) {
             return true;
         }
 
@@ -154,22 +246,13 @@ struct SurfaceParams {
         return false;
     }
 
-    static constexpr SurfaceType GetFormatType(PixelFormat pixel_format) {
-        if ((unsigned int)pixel_format < 5) {
-            return SurfaceType::Color;
+    static SurfaceType GetFormatType(PixelFormat pixel_format) {
+        if (static_cast<size_t>(pixel_format) < MaxPixelFormat) {
+            return SurfaceType::ColorTexture;
         }
 
-        if ((unsigned int)pixel_format < 14) {
-            return SurfaceType::Texture;
-        }
-
-        if (pixel_format == PixelFormat::D16 || pixel_format == PixelFormat::D24) {
-            return SurfaceType::Depth;
-        }
-
-        if (pixel_format == PixelFormat::D24S8) {
-            return SurfaceType::DepthStencil;
-        }
+        // TODO(Subv): Implement the other formats
+        ASSERT(false);
 
         return SurfaceType::Invalid;
     }
@@ -198,6 +281,24 @@ struct SurfaceParams {
     // Returns the region of the biggest valid rectange within interval
     SurfaceInterval GetCopyableInterval(const Surface& src_surface) const;
 
+    /**
+     * Gets the actual width (in pixels) of the surface. This is provided because `width` is used
+     * for tracking the surface region in memory, which may be compressed for certain formats. In
+     * this scenario, `width` is actually the compressed width.
+     */
+    u32 GetActualWidth() const {
+        return width * GetCompresssionFactor();
+    }
+
+    /**
+     * Gets the actual height (in pixels) of the surface. This is provided because `height` is used
+     * for tracking the surface region in memory, which may be compressed for certain formats. In
+     * this scenario, `height` is actually the compressed height.
+     */
+    u32 GetActualHeight() const {
+        return height * GetCompresssionFactor();
+    }
+
     u32 GetScaledWidth() const {
         return width * res_scale;
     }
@@ -222,6 +323,8 @@ struct SurfaceParams {
         return pixels * GetFormatBpp(pixel_format) / CHAR_BIT;
     }
 
+    VAddr GetCpuAddr() const;
+
     bool ExactMatch(const SurfaceParams& other_surface) const;
     bool CanSubRect(const SurfaceParams& sub_surface) const;
     bool CanExpand(const SurfaceParams& expanded_surface) const;
@@ -230,18 +333,21 @@ struct SurfaceParams {
     MathUtil::Rectangle<u32> GetSubRect(const SurfaceParams& sub_surface) const;
     MathUtil::Rectangle<u32> GetScaledSubRect(const SurfaceParams& sub_surface) const;
 
-    VAddr addr = 0;
-    VAddr end = 0;
+    Tegra::GPUVAddr addr = 0;
+    Tegra::GPUVAddr end = 0;
+    boost::optional<VAddr> cpu_addr;
     u64 size = 0;
 
     u32 width = 0;
     u32 height = 0;
     u32 stride = 0;
+    u32 block_height = 0;
     u16 res_scale = 1;
 
     bool is_tiled = false;
     PixelFormat pixel_format = PixelFormat::Invalid;
     SurfaceType type = SurfaceType::Invalid;
+    ComponentType component_type = ComponentType::Invalid;
 };
 
 struct CachedSurface : SurfaceParams {
@@ -265,20 +371,18 @@ struct CachedSurface : SurfaceParams {
     OGLTexture texture;
 
     static constexpr unsigned int GetGLBytesPerPixel(PixelFormat format) {
-        // OpenGL needs 4 bpp alignment for D24 since using GL_UNSIGNED_INT as type
-        return format == PixelFormat::Invalid
-                   ? 0
-                   : (format == PixelFormat::D24 || GetFormatType(format) == SurfaceType::Texture)
-                         ? 4
-                         : SurfaceParams::GetFormatBpp(format) / 8;
+        if (format == PixelFormat::Invalid)
+            return 0;
+
+        return SurfaceParams::GetFormatBpp(format) / CHAR_BIT;
     }
 
     std::unique_ptr<u8[]> gl_buffer;
     size_t gl_buffer_size = 0;
 
     // Read/Write data in Switch memory to/from gl_buffer
-    void LoadGLBuffer(VAddr load_start, VAddr load_end);
-    void FlushGLBuffer(VAddr flush_start, VAddr flush_end);
+    void LoadGLBuffer(Tegra::GPUVAddr load_start, Tegra::GPUVAddr load_end);
+    void FlushGLBuffer(Tegra::GPUVAddr flush_start, Tegra::GPUVAddr flush_end);
 
     // Upload/Download data in gl_buffer in/to this surface's texture
     void UploadGLTexture(const MathUtil::Rectangle<u32>& rect, GLuint read_fb_handle,
@@ -307,13 +411,16 @@ public:
     Surface GetSurface(const SurfaceParams& params, ScaleMatch match_res_scale,
                        bool load_if_create);
 
+    /// Tries to find a framebuffer GPU address based on the provided CPU address
+    boost::optional<Tegra::GPUVAddr> TryFindFramebufferGpuAddress(VAddr cpu_addr) const;
+
     /// Attempt to find a subrect (resolution scaled) of a surface, otherwise loads a texture from
     /// Switch memory to OpenGL and caches it (if not already cached)
     SurfaceRect_Tuple GetSurfaceSubRect(const SurfaceParams& params, ScaleMatch match_res_scale,
                                         bool load_if_create);
 
     /// Get a surface based on the texture configuration
-    Surface GetTextureSurface(const void* config);
+    Surface GetTextureSurface(const Tegra::Texture::FullTextureInfo& config);
 
     /// Get the color and depth surfaces based on the framebuffer configuration
     SurfaceSurfaceRect_Tuple GetFramebufferSurfaces(bool using_color_fb, bool using_depth_fb,
@@ -326,10 +433,10 @@ public:
     SurfaceRect_Tuple GetTexCopySurface(const SurfaceParams& params);
 
     /// Write any cached resources overlapping the region back to memory (if dirty)
-    void FlushRegion(VAddr addr, u64 size, Surface flush_surface = nullptr);
+    void FlushRegion(Tegra::GPUVAddr addr, u64 size, Surface flush_surface = nullptr);
 
     /// Mark region as being invalidated by region_owner (nullptr if Switch memory)
-    void InvalidateRegion(VAddr addr, u64 size, const Surface& region_owner);
+    void InvalidateRegion(Tegra::GPUVAddr addr, u64 size, const Surface& region_owner);
 
     /// Flush all cached resources tracked by this cache manager
     void FlushAll();
@@ -338,7 +445,7 @@ private:
     void DuplicateSurface(const Surface& src_surface, const Surface& dest_surface);
 
     /// Update surface's texture for given region when necessary
-    void ValidateSurface(const Surface& surface, VAddr addr, u64 size);
+    void ValidateSurface(const Surface& surface, Tegra::GPUVAddr addr, u64 size);
 
     /// Create a new surface
     Surface CreateSurface(const SurfaceParams& params);
@@ -350,7 +457,7 @@ private:
     void UnregisterSurface(const Surface& surface);
 
     /// Increase/decrease the number of surface in pages touching the specified region
-    void UpdatePagesCachedCount(VAddr addr, u64 size, int delta);
+    void UpdatePagesCachedCount(Tegra::GPUVAddr addr, u64 size, int delta);
 
     SurfaceCache surface_cache;
     PageMap cached_pages;
@@ -363,7 +470,7 @@ private:
     OGLVertexArray attributeless_vao;
     OGLBuffer d24s8_abgr_buffer;
     GLsizeiptr d24s8_abgr_buffer_size;
-    OGLShader d24s8_abgr_shader;
+    OGLProgram d24s8_abgr_shader;
     GLint d24s8_abgr_tbo_size_u_id;
     GLint d24s8_abgr_viewport_u_id;
 };

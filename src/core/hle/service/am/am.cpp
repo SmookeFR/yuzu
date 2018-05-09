@@ -12,28 +12,31 @@
 #include "core/hle/service/apm/apm.h"
 #include "core/hle/service/filesystem/filesystem.h"
 #include "core/hle/service/nvflinger/nvflinger.h"
+#include "core/hle/service/set/set.h"
 #include "core/settings.h"
 
-namespace Service {
-namespace AM {
+namespace Service::AM {
 
 IWindowController::IWindowController() : ServiceFramework("IWindowController") {
     static const FunctionInfo functions[] = {
+        {0, nullptr, "CreateWindow"},
         {1, &IWindowController::GetAppletResourceUserId, "GetAppletResourceUserId"},
         {10, &IWindowController::AcquireForegroundRights, "AcquireForegroundRights"},
+        {11, nullptr, "ReleaseForegroundRights"},
+        {12, nullptr, "RejectToChangeIntoBackground"},
     };
     RegisterHandlers(functions);
 }
 
 void IWindowController::GetAppletResourceUserId(Kernel::HLERequestContext& ctx) {
-    LOG_WARNING(Service_AM, "(STUBBED) called");
+    NGLOG_WARNING(Service_AM, "(STUBBED) called");
     IPC::ResponseBuilder rb{ctx, 4};
     rb.Push(RESULT_SUCCESS);
     rb.Push<u64>(0);
 }
 
 void IWindowController::AcquireForegroundRights(Kernel::HLERequestContext& ctx) {
-    LOG_WARNING(Service_AM, "(STUBBED) called");
+    NGLOG_WARNING(Service_AM, "(STUBBED) called");
     IPC::ResponseBuilder rb{ctx, 2};
     rb.Push(RESULT_SUCCESS);
 }
@@ -52,20 +55,20 @@ IAudioController::IAudioController() : ServiceFramework("IAudioController") {
 }
 
 void IAudioController::SetExpectedMasterVolume(Kernel::HLERequestContext& ctx) {
-    LOG_WARNING(Service_AM, "(STUBBED) called");
+    NGLOG_WARNING(Service_AM, "(STUBBED) called");
     IPC::ResponseBuilder rb{ctx, 2};
     rb.Push(RESULT_SUCCESS);
 }
 
 void IAudioController::GetMainAppletExpectedMasterVolume(Kernel::HLERequestContext& ctx) {
-    LOG_WARNING(Service_AM, "(STUBBED) called");
+    NGLOG_WARNING(Service_AM, "(STUBBED) called");
     IPC::ResponseBuilder rb{ctx, 3};
     rb.Push(RESULT_SUCCESS);
     rb.Push(volume);
 }
 
 void IAudioController::GetLibraryAppletExpectedMasterVolume(Kernel::HLERequestContext& ctx) {
-    LOG_WARNING(Service_AM, "(STUBBED) called");
+    NGLOG_WARNING(Service_AM, "(STUBBED) called");
     IPC::ResponseBuilder rb{ctx, 3};
     rb.Push(RESULT_SUCCESS);
     rb.Push(volume);
@@ -78,8 +81,11 @@ IDebugFunctions::IDebugFunctions() : ServiceFramework("IDebugFunctions") {}
 ISelfController::ISelfController(std::shared_ptr<NVFlinger::NVFlinger> nvflinger)
     : ServiceFramework("ISelfController"), nvflinger(std::move(nvflinger)) {
     static const FunctionInfo functions[] = {
+        {0, nullptr, "Exit"},
         {1, &ISelfController::LockExit, "LockExit"},
         {2, &ISelfController::UnlockExit, "UnlockExit"},
+        {3, nullptr, "EnterFatalSection"},
+        {4, nullptr, "LeaveFatalSection"},
         {9, &ISelfController::GetLibraryAppletLaunchableEvent, "GetLibraryAppletLaunchableEvent"},
         {10, &ISelfController::SetScreenShotPermission, "SetScreenShotPermission"},
         {11, &ISelfController::SetOperationModeChangedNotification,
@@ -88,8 +94,29 @@ ISelfController::ISelfController(std::shared_ptr<NVFlinger::NVFlinger> nvflinger
          "SetPerformanceModeChangedNotification"},
         {13, &ISelfController::SetFocusHandlingMode, "SetFocusHandlingMode"},
         {14, &ISelfController::SetRestartMessageEnabled, "SetRestartMessageEnabled"},
+        {15, nullptr, "SetScreenShotAppletIdentityInfo"},
         {16, &ISelfController::SetOutOfFocusSuspendingEnabled, "SetOutOfFocusSuspendingEnabled"},
+        {17, nullptr, "SetControllerFirmwareUpdateSection"},
+        {18, nullptr, "SetRequiresCaptureButtonShortPressedMessage"},
+        {19, nullptr, "SetScreenShotImageOrientation"},
+        {20, nullptr, "SetDesirableKeyboardLayout"},
         {40, &ISelfController::CreateManagedDisplayLayer, "CreateManagedDisplayLayer"},
+        {41, nullptr, "IsSystemBufferSharingEnabled"},
+        {42, nullptr, "GetSystemSharedLayerHandle"},
+        {50, &ISelfController::SetHandlesRequestToDisplay, "SetHandlesRequestToDisplay"},
+        {51, nullptr, "ApproveToDisplay"},
+        {60, nullptr, "OverrideAutoSleepTimeAndDimmingTime"},
+        {61, nullptr, "SetMediaPlaybackState"},
+        {62, nullptr, "SetIdleTimeDetectionExtension"},
+        {63, nullptr, "GetIdleTimeDetectionExtension"},
+        {64, nullptr, "SetInputDetectionSourceSet"},
+        {65, nullptr, "ReportUserIsActive"},
+        {66, nullptr, "GetCurrentIlluminance"},
+        {67, nullptr, "IsIlluminanceAvailable"},
+        {68, nullptr, "SetAutoSleepDisabled"},
+        {69, nullptr, "IsAutoSleepDisabled"},
+        {70, nullptr, "ReportMultimediaError"},
+        {80, nullptr, "SetWirelessPriorityMode"},
     };
     RegisterHandlers(functions);
 
@@ -113,14 +140,14 @@ void ISelfController::SetFocusHandlingMode(Kernel::HLERequestContext& ctx) {
     IPC::ResponseBuilder rb{ctx, 2};
     rb.Push(RESULT_SUCCESS);
 
-    LOG_WARNING(Service_AM, "(STUBBED) called");
+    NGLOG_WARNING(Service_AM, "(STUBBED) called");
 }
 
 void ISelfController::SetRestartMessageEnabled(Kernel::HLERequestContext& ctx) {
     IPC::ResponseBuilder rb{ctx, 2};
     rb.Push(RESULT_SUCCESS);
 
-    LOG_WARNING(Service_AM, "(STUBBED) called");
+    NGLOG_WARNING(Service_AM, "(STUBBED) called");
 }
 
 void ISelfController::SetPerformanceModeChangedNotification(Kernel::HLERequestContext& ctx) {
@@ -131,14 +158,14 @@ void ISelfController::SetPerformanceModeChangedNotification(Kernel::HLERequestCo
     IPC::ResponseBuilder rb{ctx, 2};
     rb.Push(RESULT_SUCCESS);
 
-    LOG_WARNING(Service_AM, "(STUBBED) called flag=%u", static_cast<u32>(flag));
+    NGLOG_WARNING(Service_AM, "(STUBBED) called flag={}", flag);
 }
 
 void ISelfController::SetScreenShotPermission(Kernel::HLERequestContext& ctx) {
     IPC::ResponseBuilder rb{ctx, 2};
     rb.Push(RESULT_SUCCESS);
 
-    LOG_WARNING(Service_AM, "(STUBBED) called");
+    NGLOG_WARNING(Service_AM, "(STUBBED) called");
 }
 
 void ISelfController::SetOperationModeChangedNotification(Kernel::HLERequestContext& ctx) {
@@ -149,7 +176,7 @@ void ISelfController::SetOperationModeChangedNotification(Kernel::HLERequestCont
     IPC::ResponseBuilder rb{ctx, 2};
     rb.Push(RESULT_SUCCESS);
 
-    LOG_WARNING(Service_AM, "(STUBBED) called flag=%u", static_cast<u32>(flag));
+    NGLOG_WARNING(Service_AM, "(STUBBED) called flag={}", flag);
 }
 
 void ISelfController::SetOutOfFocusSuspendingEnabled(Kernel::HLERequestContext& ctx) {
@@ -162,21 +189,21 @@ void ISelfController::SetOutOfFocusSuspendingEnabled(Kernel::HLERequestContext& 
     IPC::ResponseBuilder rb{ctx, 2};
     rb.Push(RESULT_SUCCESS);
 
-    LOG_WARNING(Service_AM, "(STUBBED) called enabled=%u", static_cast<u32>(enabled));
+    NGLOG_WARNING(Service_AM, "(STUBBED) called enabled={}", enabled);
 }
 
 void ISelfController::LockExit(Kernel::HLERequestContext& ctx) {
     IPC::ResponseBuilder rb{ctx, 2};
     rb.Push(RESULT_SUCCESS);
 
-    LOG_WARNING(Service_AM, "(STUBBED) called");
+    NGLOG_WARNING(Service_AM, "(STUBBED) called");
 }
 
 void ISelfController::UnlockExit(Kernel::HLERequestContext& ctx) {
     IPC::ResponseBuilder rb{ctx, 2};
     rb.Push(RESULT_SUCCESS);
 
-    LOG_WARNING(Service_AM, "(STUBBED) called");
+    NGLOG_WARNING(Service_AM, "(STUBBED) called");
 }
 
 void ISelfController::GetLibraryAppletLaunchableEvent(Kernel::HLERequestContext& ctx) {
@@ -186,7 +213,7 @@ void ISelfController::GetLibraryAppletLaunchableEvent(Kernel::HLERequestContext&
     rb.Push(RESULT_SUCCESS);
     rb.PushCopyObjects(launchable_event);
 
-    LOG_WARNING(Service_AM, "(STUBBED) called");
+    NGLOG_WARNING(Service_AM, "(STUBBED) called");
 }
 
 void ISelfController::CreateManagedDisplayLayer(Kernel::HLERequestContext& ctx) {
@@ -199,16 +226,44 @@ void ISelfController::CreateManagedDisplayLayer(Kernel::HLERequestContext& ctx) 
     rb.Push(RESULT_SUCCESS);
     rb.Push(layer_id);
 
-    LOG_WARNING(Service_AM, "(STUBBED) called");
+    NGLOG_WARNING(Service_AM, "(STUBBED) called");
+}
+
+void ISelfController::SetHandlesRequestToDisplay(Kernel::HLERequestContext& ctx) {
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(RESULT_SUCCESS);
+
+    NGLOG_WARNING(Service_AM, "(STUBBED) called");
 }
 
 ICommonStateGetter::ICommonStateGetter() : ServiceFramework("ICommonStateGetter") {
     static const FunctionInfo functions[] = {
         {0, &ICommonStateGetter::GetEventHandle, "GetEventHandle"},
         {1, &ICommonStateGetter::ReceiveMessage, "ReceiveMessage"},
+        {2, nullptr, "GetThisAppletKind"},
+        {3, nullptr, "AllowToEnterSleep"},
+        {4, nullptr, "DisallowToEnterSleep"},
         {5, &ICommonStateGetter::GetOperationMode, "GetOperationMode"},
         {6, &ICommonStateGetter::GetPerformanceMode, "GetPerformanceMode"},
+        {7, nullptr, "GetCradleStatus"},
+        {8, nullptr, "GetBootMode"},
         {9, &ICommonStateGetter::GetCurrentFocusState, "GetCurrentFocusState"},
+        {10, nullptr, "RequestToAcquireSleepLock"},
+        {11, nullptr, "ReleaseSleepLock"},
+        {12, nullptr, "ReleaseSleepLockTransiently"},
+        {13, nullptr, "GetAcquiredSleepLockEvent"},
+        {20, nullptr, "PushToGeneralChannel"},
+        {30, nullptr, "GetHomeButtonReaderLockAccessor"},
+        {31, nullptr, "GetReaderLockAccessorEx"},
+        {40, nullptr, "GetCradleFwVersion"},
+        {50, nullptr, "IsVrModeEnabled"},
+        {51, nullptr, "SetVrModeEnabled"},
+        {52, nullptr, "SwitchLcdBacklight"},
+        {55, nullptr, "IsInControllerFirmwareUpdateSection"},
+        {60, nullptr, "GetDefaultDisplayResolution"},
+        {61, nullptr, "GetDefaultDisplayResolutionChangeEvent"},
+        {62, nullptr, "GetHdcpAuthenticationState"},
+        {63, nullptr, "GetHdcpAuthenticationStateChangeEvent"},
     };
     RegisterHandlers(functions);
 
@@ -222,7 +277,7 @@ void ICommonStateGetter::GetEventHandle(Kernel::HLERequestContext& ctx) {
     rb.Push(RESULT_SUCCESS);
     rb.PushCopyObjects(event);
 
-    LOG_WARNING(Service_AM, "(STUBBED) called");
+    NGLOG_WARNING(Service_AM, "(STUBBED) called");
 }
 
 void ICommonStateGetter::ReceiveMessage(Kernel::HLERequestContext& ctx) {
@@ -230,7 +285,7 @@ void ICommonStateGetter::ReceiveMessage(Kernel::HLERequestContext& ctx) {
     rb.Push(RESULT_SUCCESS);
     rb.Push<u32>(15);
 
-    LOG_WARNING(Service_AM, "(STUBBED) called");
+    NGLOG_WARNING(Service_AM, "(STUBBED) called");
 }
 
 void ICommonStateGetter::GetCurrentFocusState(Kernel::HLERequestContext& ctx) {
@@ -238,7 +293,7 @@ void ICommonStateGetter::GetCurrentFocusState(Kernel::HLERequestContext& ctx) {
     rb.Push(RESULT_SUCCESS);
     rb.Push(static_cast<u8>(FocusState::InFocus));
 
-    LOG_WARNING(Service_AM, "(STUBBED) called");
+    NGLOG_WARNING(Service_AM, "(STUBBED) called");
 }
 
 void ICommonStateGetter::GetOperationMode(Kernel::HLERequestContext& ctx) {
@@ -247,7 +302,7 @@ void ICommonStateGetter::GetOperationMode(Kernel::HLERequestContext& ctx) {
     rb.Push(RESULT_SUCCESS);
     rb.Push(static_cast<u8>(use_docked_mode ? OperationMode::Docked : OperationMode::Handheld));
 
-    LOG_WARNING(Service_AM, "(STUBBED) called");
+    NGLOG_WARNING(Service_AM, "(STUBBED) called");
 }
 
 void ICommonStateGetter::GetPerformanceMode(Kernel::HLERequestContext& ctx) {
@@ -257,7 +312,7 @@ void ICommonStateGetter::GetPerformanceMode(Kernel::HLERequestContext& ctx) {
     rb.Push(static_cast<u32>(use_docked_mode ? APM::PerformanceMode::Docked
                                              : APM::PerformanceMode::Handheld));
 
-    LOG_WARNING(Service_AM, "(STUBBED) called");
+    NGLOG_WARNING(Service_AM, "(STUBBED) called");
 }
 
 class ILibraryAppletAccessor final : public ServiceFramework<ILibraryAppletAccessor> {
@@ -278,7 +333,7 @@ public:
             {104, nullptr, "PopInteractiveOutData"},
             {105, nullptr, "GetPopOutDataEvent"},
             {106, nullptr, "GetPopInteractiveOutDataEvent"},
-            {120, nullptr, "NeedsToExitProcess"},
+            {110, nullptr, "NeedsToExitProcess"},
             {120, nullptr, "GetLibraryAppletInfo"},
             {150, nullptr, "RequestForAppletToGetForeground"},
             {160, nullptr, "GetIndirectLayerConsumerHandle"},
@@ -297,7 +352,7 @@ private:
         rb.Push(RESULT_SUCCESS);
         rb.PushCopyObjects(state_changed_event);
 
-        LOG_WARNING(Service_AM, "(STUBBED) called");
+        NGLOG_WARNING(Service_AM, "(STUBBED) called");
     }
 
     Kernel::SharedPtr<Kernel::Event> state_changed_event;
@@ -321,7 +376,7 @@ void ILibraryAppletCreator::CreateLibraryApplet(Kernel::HLERequestContext& ctx) 
     rb.Push(RESULT_SUCCESS);
     rb.PushIpcInterface<AM::ILibraryAppletAccessor>();
 
-    LOG_DEBUG(Service_AM, "called");
+    NGLOG_DEBUG(Service_AM, "called");
 }
 
 class IStorageAccessor final : public ServiceFramework<IStorageAccessor> {
@@ -330,6 +385,7 @@ public:
         : ServiceFramework("IStorageAccessor"), buffer(std::move(buffer)) {
         static const FunctionInfo functions[] = {
             {0, &IStorageAccessor::GetSize, "GetSize"},
+            {10, nullptr, "Write"},
             {11, &IStorageAccessor::Read, "Read"},
         };
         RegisterHandlers(functions);
@@ -344,7 +400,7 @@ private:
         rb.Push(RESULT_SUCCESS);
         rb.Push(static_cast<u64>(buffer.size()));
 
-        LOG_DEBUG(Service_AM, "called");
+        NGLOG_DEBUG(Service_AM, "called");
     }
 
     void Read(Kernel::HLERequestContext& ctx) {
@@ -362,7 +418,7 @@ private:
 
         rb.Push(RESULT_SUCCESS);
 
-        LOG_DEBUG(Service_AM, "called");
+        NGLOG_DEBUG(Service_AM, "called");
     }
 };
 
@@ -372,6 +428,7 @@ public:
         : ServiceFramework("IStorage"), buffer(std::move(buffer)) {
         static const FunctionInfo functions[] = {
             {0, &IStorage::Open, "Open"},
+            {1, nullptr, "OpenTransferStorage"},
         };
         RegisterHandlers(functions);
     }
@@ -385,19 +442,50 @@ private:
         rb.Push(RESULT_SUCCESS);
         rb.PushIpcInterface<AM::IStorageAccessor>(buffer);
 
-        LOG_DEBUG(Service_AM, "called");
+        NGLOG_DEBUG(Service_AM, "called");
     }
 };
 
 IApplicationFunctions::IApplicationFunctions() : ServiceFramework("IApplicationFunctions") {
     static const FunctionInfo functions[] = {
         {1, &IApplicationFunctions::PopLaunchParameter, "PopLaunchParameter"},
+        {10, nullptr, "CreateApplicationAndPushAndRequestToStart"},
+        {11, nullptr, "CreateApplicationAndPushAndRequestToStartForQuest"},
+        {12, nullptr, "CreateApplicationAndRequestToStart"},
+        {13, &IApplicationFunctions::CreateApplicationAndRequestToStartForQuest,
+         "CreateApplicationAndRequestToStartForQuest"},
         {20, &IApplicationFunctions::EnsureSaveData, "EnsureSaveData"},
         {21, &IApplicationFunctions::GetDesiredLanguage, "GetDesiredLanguage"},
         {22, &IApplicationFunctions::SetTerminateResult, "SetTerminateResult"},
+        {23, nullptr, "GetDisplayVersion"},
+        {24, nullptr, "GetLaunchStorageInfoForDebug"},
+        {25, nullptr, "ExtendSaveData"},
+        {26, nullptr, "GetSaveDataSize"},
+        {30, nullptr, "BeginBlockingHomeButtonShortAndLongPressed"},
+        {31, nullptr, "EndBlockingHomeButtonShortAndLongPressed"},
+        {32, nullptr, "BeginBlockingHomeButton"},
+        {33, nullptr, "EndBlockingHomeButton"},
+        {40, &IApplicationFunctions::NotifyRunning, "NotifyRunning"},
+        {50, nullptr, "GetPseudoDeviceId"},
+        {60, nullptr, "SetMediaPlaybackStateForApplication"},
+        {65, nullptr, "IsGamePlayRecordingSupported"},
         {66, &IApplicationFunctions::InitializeGamePlayRecording, "InitializeGamePlayRecording"},
         {67, &IApplicationFunctions::SetGamePlayRecordingState, "SetGamePlayRecordingState"},
-        {40, &IApplicationFunctions::NotifyRunning, "NotifyRunning"},
+        {68, nullptr, "RequestFlushGamePlayingMovieForDebug"},
+        {70, nullptr, "RequestToShutdown"},
+        {71, nullptr, "RequestToReboot"},
+        {80, nullptr, "ExitAndRequestToShowThanksMessage"},
+        {90, nullptr, "EnableApplicationCrashReport"},
+        {100, nullptr, "InitializeApplicationCopyrightFrameBuffer"},
+        {101, nullptr, "SetApplicationCopyrightImage"},
+        {102, nullptr, "SetApplicationCopyrightVisibility"},
+        {110, nullptr, "QueryApplicationPlayStatistics"},
+        {120, nullptr, "ExecuteProgram"},
+        {121, nullptr, "ClearUserChannel"},
+        {122, nullptr, "UnpopToUserChannel"},
+        {500, nullptr, "StartContinuousRecordingFlushForDebug"},
+        {1000, nullptr, "CreateMovieMaker"},
+        {1001, nullptr, "PrepareForJit"},
     };
     RegisterHandlers(functions);
 }
@@ -419,14 +507,21 @@ void IApplicationFunctions::PopLaunchParameter(Kernel::HLERequestContext& ctx) {
     rb.Push(RESULT_SUCCESS);
     rb.PushIpcInterface<AM::IStorage>(buffer);
 
-    LOG_DEBUG(Service_AM, "called");
+    NGLOG_DEBUG(Service_AM, "called");
+}
+
+void IApplicationFunctions::CreateApplicationAndRequestToStartForQuest(
+    Kernel::HLERequestContext& ctx) {
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(RESULT_SUCCESS);
+    NGLOG_WARNING(Service_AM, "(STUBBED) called");
 }
 
 void IApplicationFunctions::EnsureSaveData(Kernel::HLERequestContext& ctx) {
     IPC::RequestParser rp{ctx};
     u128 uid = rp.PopRaw<u128>();
 
-    LOG_WARNING(Service, "(STUBBED) called uid = %016" PRIX64 "%016" PRIX64, uid[1], uid[0]);
+    NGLOG_WARNING(Service, "(STUBBED) called uid = {:016X}{:016X}", uid[1], uid[0]);
 
     IPC::ResponseBuilder rb{ctx, 4};
 
@@ -454,27 +549,28 @@ void IApplicationFunctions::SetTerminateResult(Kernel::HLERequestContext& ctx) {
     IPC::ResponseBuilder rb{ctx, 2};
     rb.Push(RESULT_SUCCESS);
 
-    LOG_WARNING(Service_AM, "(STUBBED) called, result=0x%08X", result);
+    NGLOG_WARNING(Service_AM, "(STUBBED) called, result=0x{:08X}", result);
 }
 
 void IApplicationFunctions::GetDesiredLanguage(Kernel::HLERequestContext& ctx) {
+    // TODO(bunnei): This should be configurable
     IPC::ResponseBuilder rb{ctx, 4};
     rb.Push(RESULT_SUCCESS);
-    rb.Push<u64>(SystemLanguage::English);
-    LOG_WARNING(Service_AM, "(STUBBED) called");
+    rb.Push(static_cast<u64>(Service::Set::LanguageCode::EN_US));
+    NGLOG_DEBUG(Service_AM, "called");
 }
 
 void IApplicationFunctions::InitializeGamePlayRecording(Kernel::HLERequestContext& ctx) {
     IPC::ResponseBuilder rb{ctx, 2};
     rb.Push(RESULT_SUCCESS);
-    LOG_WARNING(Service_AM, "(STUBBED) called");
+    NGLOG_WARNING(Service_AM, "(STUBBED) called");
 }
 
 void IApplicationFunctions::SetGamePlayRecordingState(Kernel::HLERequestContext& ctx) {
     IPC::ResponseBuilder rb{ctx, 2};
     rb.Push(RESULT_SUCCESS);
 
-    LOG_WARNING(Service_AM, "(STUBBED) called");
+    NGLOG_WARNING(Service_AM, "(STUBBED) called");
 }
 
 void IApplicationFunctions::NotifyRunning(Kernel::HLERequestContext& ctx) {
@@ -482,7 +578,7 @@ void IApplicationFunctions::NotifyRunning(Kernel::HLERequestContext& ctx) {
     rb.Push(RESULT_SUCCESS);
     rb.Push<u8>(0); // Unknown, seems to be ignored by official processes
 
-    LOG_WARNING(Service_AM, "(STUBBED) called");
+    NGLOG_WARNING(Service_AM, "(STUBBED) called");
 }
 
 void InstallInterfaces(SM::ServiceManager& service_manager,
@@ -491,5 +587,64 @@ void InstallInterfaces(SM::ServiceManager& service_manager,
     std::make_shared<AppletOE>(nvflinger)->InstallAsService(service_manager);
 }
 
-} // namespace AM
-} // namespace Service
+IHomeMenuFunctions::IHomeMenuFunctions() : ServiceFramework("IHomeMenuFunctions") {
+    static const FunctionInfo functions[] = {
+        {10, &IHomeMenuFunctions::RequestToGetForeground, "RequestToGetForeground"},
+        {11, nullptr, "LockForeground"},
+        {12, nullptr, "UnlockForeground"},
+        {20, nullptr, "PopFromGeneralChannel"},
+        {21, nullptr, "GetPopFromGeneralChannelEvent"},
+        {30, nullptr, "GetHomeButtonWriterLockAccessor"},
+        {31, nullptr, "GetWriterLockAccessorEx"},
+    };
+    RegisterHandlers(functions);
+}
+
+void IHomeMenuFunctions::RequestToGetForeground(Kernel::HLERequestContext& ctx) {
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(RESULT_SUCCESS);
+    NGLOG_WARNING(Service_AM, "(STUBBED) called");
+}
+
+IGlobalStateController::IGlobalStateController() : ServiceFramework("IGlobalStateController") {
+    static const FunctionInfo functions[] = {
+        {0, nullptr, "RequestToEnterSleep"},
+        {1, nullptr, "EnterSleep"},
+        {2, nullptr, "StartSleepSequence"},
+        {3, nullptr, "StartShutdownSequence"},
+        {4, nullptr, "StartRebootSequence"},
+        {10, nullptr, "LoadAndApplyIdlePolicySettings"},
+        {11, nullptr, "NotifyCecSettingsChanged"},
+        {12, nullptr, "SetDefaultHomeButtonLongPressTime"},
+        {13, nullptr, "UpdateDefaultDisplayResolution"},
+        {14, nullptr, "ShouldSleepOnBoot"},
+        {15, nullptr, "GetHdcpAuthenticationFailedEvent"},
+    };
+    RegisterHandlers(functions);
+}
+
+IApplicationCreator::IApplicationCreator() : ServiceFramework("IApplicationCreator") {
+    static const FunctionInfo functions[] = {
+        {0, nullptr, "CreateApplication"},
+        {1, nullptr, "PopLaunchRequestedApplication"},
+        {10, nullptr, "CreateSystemApplication"},
+        {100, nullptr, "PopFloatingApplicationForDevelopment"},
+    };
+    RegisterHandlers(functions);
+}
+
+IProcessWindingController::IProcessWindingController()
+    : ServiceFramework("IProcessWindingController") {
+    static const FunctionInfo functions[] = {
+        {0, nullptr, "GetLaunchReason"},
+        {11, nullptr, "OpenCallingLibraryApplet"},
+        {21, nullptr, "PushContext"},
+        {22, nullptr, "PopContext"},
+        {23, nullptr, "CancelWindingReservation"},
+        {30, nullptr, "WindAndDoReserved"},
+        {40, nullptr, "ReserveToStartAndWaitAndUnwindThis"},
+        {41, nullptr, "ReserveToStartAndWait"},
+    };
+    RegisterHandlers(functions);
+}
+} // namespace Service::AM

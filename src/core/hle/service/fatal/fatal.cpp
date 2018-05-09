@@ -8,8 +8,7 @@
 #include "core/hle/service/fatal/fatal_p.h"
 #include "core/hle/service/fatal/fatal_u.h"
 
-namespace Service {
-namespace Fatal {
+namespace Service::Fatal {
 
 Module::Interface::Interface(std::shared_ptr<Module> module, const char* name)
     : ServiceFramework(name), module(std::move(module)) {}
@@ -17,13 +16,13 @@ Module::Interface::Interface(std::shared_ptr<Module> module, const char* name)
 void Module::Interface::FatalSimple(Kernel::HLERequestContext& ctx) {
     IPC::RequestParser rp(ctx);
     u32 error_code = rp.Pop<u32>();
-    LOG_WARNING(Service_Fatal, "(STUBBED) called, error_code=0x%X", error_code);
+    NGLOG_WARNING(Service_Fatal, "(STUBBED) called, error_code=0x{:X}", error_code);
     IPC::ResponseBuilder rb{ctx, 2};
     rb.Push(RESULT_SUCCESS);
 }
 
 void Module::Interface::TransitionToFatalError(Kernel::HLERequestContext& ctx) {
-    LOG_WARNING(Service_Fatal, "(STUBBED) called");
+    NGLOG_WARNING(Service_Fatal, "(STUBBED) called");
     IPC::ResponseBuilder rb{ctx, 2};
     rb.Push(RESULT_SUCCESS);
 }
@@ -34,5 +33,4 @@ void InstallInterfaces(SM::ServiceManager& service_manager) {
     std::make_shared<Fatal_U>(module)->InstallAsService(service_manager);
 }
 
-} // namespace Fatal
-} // namespace Service
+} // namespace Service::Fatal

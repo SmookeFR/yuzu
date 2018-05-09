@@ -20,6 +20,9 @@
 namespace Tegra {
 namespace Engines {
 
+#define MAXWELL3D_REG_INDEX(field_name)                                                            \
+    (offsetof(Tegra::Engines::Maxwell3D::Regs, field_name) / sizeof(u32))
+
 class Maxwell3D final {
 public:
     explicit Maxwell3D(MemoryManager& memory_manager);
@@ -28,7 +31,7 @@ public:
     /// Register structure of the Maxwell3D engine.
     /// TODO(Subv): This structure will need to be made bigger as more registers are discovered.
     struct Regs {
-        static constexpr size_t NUM_REGS = 0xE36;
+        static constexpr size_t NUM_REGS = 0xE00;
 
         static constexpr size_t NumRenderTargets = 8;
         static constexpr size_t NumViewports = 16;
@@ -43,6 +46,29 @@ public:
         enum class QueryMode : u32 {
             Write = 0,
             Sync = 1,
+            // TODO(Subv): It is currently unknown what the difference between method 2 and method 0
+            // is.
+            Write2 = 2,
+        };
+
+        enum class QueryUnit : u32 {
+            VFetch = 1,
+            VP = 2,
+            Rast = 4,
+            StrmOut = 5,
+            GP = 6,
+            ZCull = 7,
+            Prop = 10,
+            Crop = 15,
+        };
+
+        enum class QuerySelect : u32 {
+            Zero = 0,
+        };
+
+        enum class QuerySyncCondition : u32 {
+            NotEqual = 0,
+            GreaterThan = 1,
         };
 
         enum class ShaderProgram : u32 {
@@ -248,9 +274,63 @@ public:
             Patches = 0xe,
         };
 
+        enum class IndexFormat : u32 {
+            UnsignedByte = 0x0,
+            UnsignedShort = 0x1,
+            UnsignedInt = 0x2,
+        };
+
+        struct Blend {
+            enum class Equation : u32 {
+                Add = 1,
+                Subtract = 2,
+                ReverseSubtract = 3,
+                Min = 4,
+                Max = 5,
+            };
+
+            enum class Factor : u32 {
+                Zero = 0x1,
+                One = 0x2,
+                SourceColor = 0x3,
+                OneMinusSourceColor = 0x4,
+                SourceAlpha = 0x5,
+                OneMinusSourceAlpha = 0x6,
+                DestAlpha = 0x7,
+                OneMinusDestAlpha = 0x8,
+                DestColor = 0x9,
+                OneMinusDestColor = 0xa,
+                SourceAlphaSaturate = 0xb,
+                Source1Color = 0x10,
+                OneMinusSource1Color = 0x11,
+                Source1Alpha = 0x12,
+                OneMinusSource1Alpha = 0x13,
+                ConstantColor = 0x61,
+                OneMinusConstantColor = 0x62,
+                ConstantAlpha = 0x63,
+                OneMinusConstantAlpha = 0x64,
+            };
+
+            u32 separate_alpha;
+            Equation equation_rgb;
+            Factor factor_source_rgb;
+            Factor factor_dest_rgb;
+            Equation equation_a;
+            Factor factor_source_a;
+            Factor factor_dest_a;
+        };
+
         union {
             struct {
-                INSERT_PADDING_WORDS(0x200);
+                INSERT_PADDING_WORDS(0x45);
+
+                struct {
+                    INSERT_PADDING_WORDS(1);
+                    u32 data;
+                    u32 entry;
+                } macros;
+
+                INSERT_PADDING_WORDS(0x1B8);
 
                 struct {
                     u32 address_high;
@@ -270,7 +350,15 @@ public:
                     }
                 } rt[NumRenderTargets];
 
-                INSERT_PADDING_WORDS(0x80);
+                struct {
+                    f32 scale_x;
+                    f32 scale_y;
+                    f32 scale_z;
+                    u32 translate_x;
+                    u32 translate_y;
+                    u32 translate_z;
+                    INSERT_PADDING_WORDS(2);
+                } viewport_transform[NumViewports];
 
                 struct {
                     union {
@@ -375,7 +463,42 @@ public:
                     };
                 } draw;
 
-                INSERT_PADDING_WORDS(0x139);
+                INSERT_PADDING_WORDS(0x6B);
+
+                struct {
+                    u32 start_addr_high;
+                    u32 start_addr_low;
+                    u32 end_addr_high;
+                    u32 end_addr_low;
+                    IndexFormat format;
+                    u32 first;
+                    u32 count;
+
+                    unsigned FormatSizeInBytes() const {
+                        switch (format) {
+                        case IndexFormat::UnsignedByte:
+                            return 1;
+                        case IndexFormat::UnsignedShort:
+                            return 2;
+                        case IndexFormat::UnsignedInt:
+                            return 4;
+                        }
+                        UNREACHABLE();
+                    }
+
+                    GPUVAddr StartAddress() const {
+                        return static_cast<GPUVAddr>(
+                            (static_cast<GPUVAddr>(start_addr_high) << 32) | start_addr_low);
+                    }
+
+                    GPUVAddr EndAddress() const {
+                        return static_cast<GPUVAddr>((static_cast<GPUVAddr>(end_addr_high) << 32) |
+                                                     end_addr_low);
+                    }
+                } index_array;
+
+                INSERT_PADDING_WORDS(0xC7);
+
                 struct {
                     u32 query_address_high;
                     u32 query_address_low;
@@ -384,7 +507,10 @@ public:
                         u32 raw;
                         BitField<0, 2, QueryMode> mode;
                         BitField<4, 1, u32> fence;
-                        BitField<12, 4, u32> unit;
+                        BitField<12, 4, QueryUnit> unit;
+                        BitField<16, 1, QuerySyncCondition> sync_cond;
+                        BitField<23, 5, QuerySelect> select;
+                        BitField<28, 1, u32> short_query;
                     } query_get;
 
                     GPUVAddr QueryAddress() const {
@@ -408,9 +534,16 @@ public:
                         return static_cast<GPUVAddr>((static_cast<GPUVAddr>(start_high) << 32) |
                                                      start_low);
                     }
+
+                    bool IsEnabled() const {
+                        return enable != 0 && StartAddress() != 0;
+                    }
+
                 } vertex_array[NumVertexArrays];
 
-                INSERT_PADDING_WORDS(0x40);
+                Blend blend;
+
+                INSERT_PADDING_WORDS(0x39);
 
                 struct {
                     u32 limit_high;
@@ -427,14 +560,11 @@ public:
                         BitField<0, 1, u32> enable;
                         BitField<4, 4, ShaderProgram> program;
                     };
-                    u32 start_id;
-                    INSERT_PADDING_WORDS(1);
-                    u32 gpr_alloc;
-                    ShaderStage type;
-                    INSERT_PADDING_WORDS(9);
+                    u32 offset;
+                    INSERT_PADDING_WORDS(14);
                 } shader_config[MaxShaderProgram];
 
-                INSERT_PADDING_WORDS(0x8C);
+                INSERT_PADDING_WORDS(0x80);
 
                 struct {
                     u32 cb_size;
@@ -483,7 +613,7 @@ public:
                     u32 size[MaxShaderStage];
                 } tex_info_buffers;
 
-                INSERT_PADDING_WORDS(0x102);
+                INSERT_PADDING_WORDS(0xCC);
             };
             std::array<u32, NUM_REGS> reg_array;
         };
@@ -507,6 +637,7 @@ public:
     };
 
     State state{};
+    MemoryManager& memory_manager;
 
     /// Reads a register value located at the input method address
     u32 GetRegisterValue(u32 method) const;
@@ -514,15 +645,13 @@ public:
     /// Write the value to the register identified by method.
     void WriteReg(u32 method, u32 value, u32 remaining_params);
 
-    /// Uploads the code for a GPU macro program associated with the specified entry.
-    void SubmitMacroCode(u32 entry, std::vector<u32> code);
-
     /// Returns a list of enabled textures for the specified shader stage.
     std::vector<Texture::FullTextureInfo> GetStageTextures(Regs::ShaderStage stage) const;
 
-private:
-    MemoryManager& memory_manager;
+    /// Returns whether the specified shader stage is enabled or not.
+    bool IsShaderStageEnabled(Regs::ShaderStage stage) const;
 
+private:
     std::unordered_map<u32, std::vector<u32>> uploaded_macros;
 
     /// Macro method that is currently being executed / being fed parameters.
@@ -546,6 +675,9 @@ private:
      */
     void CallMacroMethod(u32 method, std::vector<u32> parameters);
 
+    /// Handles writes to the macro uploading registers.
+    void ProcessMacroUpload(u32 data);
+
     /// Handles a write to the QUERY_GET register.
     void ProcessQueryGet();
 
@@ -563,7 +695,9 @@ private:
     static_assert(offsetof(Maxwell3D::Regs, field_name) == position * 4,                           \
                   "Field " #field_name " has invalid position")
 
+ASSERT_REG_POSITION(macros, 0x45);
 ASSERT_REG_POSITION(rt, 0x200);
+ASSERT_REG_POSITION(viewport_transform[0], 0x280);
 ASSERT_REG_POSITION(viewport, 0x300);
 ASSERT_REG_POSITION(vertex_buffer, 0x35D);
 ASSERT_REG_POSITION(zeta, 0x3F8);
@@ -573,8 +707,10 @@ ASSERT_REG_POSITION(tsc, 0x557);
 ASSERT_REG_POSITION(tic, 0x55D);
 ASSERT_REG_POSITION(code_address, 0x582);
 ASSERT_REG_POSITION(draw, 0x585);
+ASSERT_REG_POSITION(index_array, 0x5F2);
 ASSERT_REG_POSITION(query, 0x6C0);
 ASSERT_REG_POSITION(vertex_array[0], 0x700);
+ASSERT_REG_POSITION(blend, 0x780);
 ASSERT_REG_POSITION(vertex_array_limit[0], 0x7C0);
 ASSERT_REG_POSITION(shader_config[0], 0x800);
 ASSERT_REG_POSITION(const_buffer, 0x8E0);

@@ -15,8 +15,14 @@ namespace Tegra {
 
 enum class RenderTargetFormat : u32 {
     NONE = 0x0,
+    RGBA16_FLOAT = 0xCA,
+    RGB10_A2_UNORM = 0xD1,
     RGBA8_UNORM = 0xD5,
+    RGBA8_SRGB = 0xD6,
 };
+
+/// Returns the number of bytes per pixel of each rendertarget format.
+u32 RenderTargetBytesPerPixel(RenderTargetFormat format);
 
 class DebugContext;
 
@@ -83,8 +89,6 @@ public:
     }
 
 private:
-    static constexpr u32 InvalidGraphMacroEntry = 0xFFFFFFFF;
-
     /// Writes a single register in the engine bound to the specified subchannel
     void WriteReg(u32 method, u32 subchannel, u32 value, u32 remaining_params);
 
@@ -97,11 +101,6 @@ private:
     std::unique_ptr<Engines::Fermi2D> fermi_2d;
     /// Compute engine
     std::unique_ptr<Engines::MaxwellCompute> maxwell_compute;
-
-    /// Entry of the macro that is currently being uploaded
-    u32 current_macro_entry = InvalidGraphMacroEntry;
-    /// Code being uploaded for the current macro
-    std::vector<u32> current_macro_code;
 };
 
 } // namespace Tegra
